@@ -1,0 +1,48 @@
+{
+    "type": "FRAME",
+    "x": 761,
+    "y": 212,
+    "width": 232,
+    "height": 24,
+    "fills": [],
+    "topLeftRadius": 0,
+    "topRightRadius": 0,
+    "bottomRightRadius": 0,
+    "bottomLeftRadius": 0,
+    "cornerRadius": "figma.mixed",
+    "parent_id": "146",
+    "cnt_id": "147",
+    "isInline": false,
+    "clipsContent": true,
+    "children": [
+        {
+            "x": 761,
+            "y": 215,
+            "width": 224,
+            "height": 41,
+            "type": "TEXT",
+            "characters": "雷军：做支持苹果生态最好的汽车",
+            "fills": [
+                {
+                    "type": "SOLID",
+                    "color": {
+                        "r": 0.13333333333333333,
+                        "g": 0.13333333333333333,
+                        "b": 0.14901960784313725
+                    },
+                    "opacity": 1
+                }
+            ],
+            "lineHeight": {
+                "unit": "PIXELS",
+                "value": 24
+            },
+            "fontSize": 16,
+            "fontFamily": "\"PingFang SC\", \"Hiragino Sans GB\", Arial, \"Microsoft YaHei\", Verdana, Roboto, Noto, \"Helvetica Neue\", sans-serif",
+            "textAlignHorizontal": "LEFT",
+            "parent_id": "147",
+            "cnt_id": "750",
+            "children": []
+        }
+    ]
+}

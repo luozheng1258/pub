@@ -1,0 +1,131 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <title>walk page</title>
+    <style>
+      button,
+      input {
+        margin: 5px;
+      }
+    </style>
+  </head>
+
+  <body>
+    <form method="POST" enctype="multipart/form-data">
+      Walk Tree Url<input type="input" name="url" id="inputUrl" /><br />
+      <span id="showUrl"></span>
+      <br />
+      <!-- <button type="submit" name="cmd" value="start">Start</button><br> -->
+      <button type="button" name="post" value="start" id="postUrl">
+        WalkPage</button
+      ><br />
+      <div>
+        <div>https://www.coze.cn/</div>
+        <div>https://www.aliyun.com/</div>
+        <div>https://cloud.tencent.com/</div>
+        <div>https://v.qq.com/</div>
+        <div>https://www.bilibili.com/</div>
+      </div>
+      <a href="" id="playerUrl" style="display: none" target="_blank"
+        >跳转到播放端</a
+      >
+    </form>
+    <script>
+      (function () {
+        window.postUrl.addEventListener('click', () => {
+          if (window.inputUrl.value) {
+            window.playerUrl.style.display = 'none';
+            console.log('debug inputVal：', window.inputUrl.value);
+            let url = '/api/walkPage';
+            let xhr = new XMLHttpRequest();
+            var formData = new FormData();
+            formData.append('url', window.inputUrl.value);
+
+            xhr.onreadystatechange = (e) => {
+              //服务端响应后
+              if (xhr.readyState == 4) {
+                //判断客户端是否可以使用
+                if (xhr.status == 200) {
+                  //表示成功处理请求
+                  console.log(xhr.responseText);
+                  console.log('返回数据了');
+                  try {
+                    // let responseResult = JSON.parse(xhr.responseText)
+                    // // console.log("debug json", responseResult.jsonStr)
+                    // if (responseResult) {
+                    // 创建Blob对象
+                    var blob = new Blob([xhr.responseText], {
+                      type: 'application/json',
+                    });
+
+                    // 创建URL
+                    var url = URL.createObjectURL(blob);
+
+                    // 创建a标签
+                    var link = document.createElement('a');
+                    link.href = url;
+                    // link.download = responseResult.pageTitle.slice(0, 20) + ".json";
+                    link.download = 'testCase.json';
+
+                    // 将a标签添加到文档中
+                    document.body.appendChild(link);
+
+                    // 模拟点击操作，触发文件下载
+                    link.click();
+                    // }
+                    // let resultStr = responseResult.url && responseResult.url.match(/\/([a-zA-z]*_\d*?)\.txt$/)[1]
+                    // let playerUrl = "/play?path=" + resultStr
+                    // window.playerUrl.setAttribute("href", playerUrl)
+                    // window.playerUrl.style.display = "block"
+                  } catch (err) {}
+                } else {
+                  console.log(xhr.status + ' ' + xhr.statusText);
+                }
+              }
+            };
+
+            xhr.open('POST', url);
+            xhr.send(formData);
+          }
+        });
+
+        let url = '{{url}}';
+        if (url.length > 7) {
+          let realUrl = 'http://' + location.hostname + '/testSelenium/' + url;
+          window.showUrl.innerText = `页面获取成功：${realUrl}`;
+          let playerUrl =
+            'http://' +
+            location.host +
+            '/play?path=' +
+            url.match(/\/([a-zA-z]*_\d*?)\.txt$/)[0];
+          console.log('debug playerUrl: ', playerUrl);
+          // setTimeout(() => {
+          //     let xhr = new XMLHttpRequest()
+          //     // get 方式
+          //     xhr.open('get', 'http://' + location.hostname + '/testSelenium/' + url, true)
+          //     xhr.setRequestHeader('Cache-Control', 'no-cache')
+          //     xhr.setRequestHeader('Content-type', 'application/json')
+          //     // xhr.setRequestHeader('kms-token', token)
+          //     // 返回类型blob，不设置会打不开 excel
+          //     xhr.responseType = 'blob'
+          //     // 定义请求完成的处理函数，请求前也可以增加加载框/禁用下载按钮逻辑
+          //     xhr.onload = function () {
+          //         // 请求完成
+          //         if (this.status === 200) {
+          //             let blob = this.response
+          //             let url = window.URL.createObjectURL(blob)
+          //             // 生成 url，创建一个a标签用于下载
+          //             let a = document.createElement('a')
+          //             a.download = '收支清单.json'
+          //             a.href = url
+          //             a.click()
+          //         }
+          //     }
+          //     xhr.send()
+          // }, 1000)
+        }
+      })();
+    </script>
+  </body>
+</html>
