@@ -1297,7 +1297,8 @@ export default function walkPage(paramArg) {
       }
       layerDict[layer.cnt_id] = layer;
       layer.children = [];
-      if (layer.cnt_id === layer.parent_id || layer.isFixed || layer.isAbs) {
+      //  isAbs的元素不脱离文档流
+      if (layer.cnt_id === layer.parent_id || layer.isFixed) {
         // 不可见的组件不加入组件节点树内
         if (layer.visible !== false) {
           layerTree.push(layer);
@@ -1413,6 +1414,7 @@ export default function walkPage(paramArg) {
         if (layerComputedStyle.position === 'fixed') {
           layer.isFixed = true;
         }
+        // zIndex 大于10的绝对定位元素认为是弹窗
         if (
           layerComputedStyle.position === 'absolute' &&
           layerComputedStyle.zIndex > 10
@@ -1620,12 +1622,14 @@ export default function walkPage(paramArg) {
 
   // 记录额外的style信息，方便编辑器中转相对定位时使用
   function recordExtraStyle({ layer, computedStyle }) {
-    const { textAlign, whiteSpace, display, position } = computedStyle || {};
+    const { textAlign, whiteSpace, display, position, flex, float } =
+      computedStyle || {};
     let extraStyle = {
       textAlign,
       whiteSpace,
       display,
       position,
+      flex,
     };
     switch (display) {
       case 'flex':
@@ -1636,6 +1640,9 @@ export default function walkPage(paramArg) {
       case 'inline-grid':
         recordExtraStyle.getGrid({ extraStyle, computedStyle });
         break;
+    }
+    if (float !== 'none') {
+      extraStyle.float = float;
     }
     recordExtraStyle.getPadding({ extraStyle, computedStyle });
     recordExtraStyle.getMargin({ extraStyle, computedStyle });

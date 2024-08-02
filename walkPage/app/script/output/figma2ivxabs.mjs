@@ -16,11 +16,11 @@ function genCaseData() {
         expand: true,
         hLines: [],
         vLines: [],
-        zoom: 100,
-        width: 375,
-        height: 667,
+        zoom: 40,
+        width: 1920,
+        height: 1200,
         cover: '0d56ddc1f0cf0205d7bbe06c41bf99b8_10540.svg',
-        deviceName: 'iPhone6/7/8',
+        deviceName: '大屏4',
         app_safeArea_topInsetHeight: 0,
         app_safeArea_bottomInsetHeight: 0,
       },
@@ -292,6 +292,10 @@ class Figma2IvxAbs {
         break;
     }
   };
+  mergeExtraStyle = ({ source, target }) => {
+    const { position, float } = source || {};
+    return target ? { ...target, position, float } : target;
+  };
 
   checkCanMerge = ({ node, pNode }) => {
     // return;
@@ -305,11 +309,14 @@ class Figma2IvxAbs {
     ) {
       return false;
     }
-
     checkChild.call(this, node);
     if (canMergeChild) {
       node.children = canMergeChild.children;
-      node._extraStyle = canMergeChild._extraStyle;
+      // position，float 属性是当前节点的布局属性，不需要继承子节点的布局属性
+      node._extraStyle = this.mergeExtraStyle({
+        source: node._extraStyle,
+        target: canMergeChild._extraStyle,
+      });
     }
 
     // 节点有背景色，有边框的情况，就先行保留
@@ -341,7 +348,13 @@ class Figma2IvxAbs {
       }
 
       for (let key in canReplaceChild) {
-        if (key !== 'parent' && key !== 'isInline') {
+        if (!['parent', 'isInline'].includes(key)) {
+          if (key === '_extraStyle') {
+            canReplaceChild[key] = this.mergeExtraStyle({
+              source: node[key],
+              target: canReplaceChild[key],
+            });
+          }
           node[key] = canReplaceChild[key];
         }
       }

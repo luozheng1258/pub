@@ -121,9 +121,9 @@ async function writeJSON({ jsonStr, url }) {
       };
       let result = await getIvxCase({ outputFigmaJSON: true });
 
-      // 使用 DevTools 协议动态调整浏览器窗口大小1820
+      // 使用 DevTools 协议动态调整浏览器窗口大小1440
       const client = await page.target().createCDPSession();
-      let windowBoundW = 1820;
+      let windowBoundW = 1440;
       await client.send('Browser.setWindowBounds', {
         windowId: (await client.send('Browser.getWindowForTarget')).windowId,
         bounds: { width: windowBoundW, height: 1080 },
@@ -152,7 +152,7 @@ function recordNodeW({ source, target, windowBoundW }) {
   let { stage } = source || {};
   let { stage: targetStage } = target || {};
 
-  let recordWindowBoundW = ({ node1, node2 }) => {
+  let recordWindowBoundW = ({ node1, pNode1, node2, pNode2 }) => {
     let { props, uis, children } = node1 || {};
     let { props: targetProps, children: targetChildren } = node2 || {};
     let { width } = props || {};
@@ -160,12 +160,22 @@ function recordNodeW({ source, target, windowBoundW }) {
     let { _extraStyle } = uis || {};
 
     if (width !== targetWidth && _extraStyle) {
-      _extraStyle.windowBoundW = { [windowBoundW]: targetWidth, 1920: width };
+      const { width: pW1 = 1 } = pNode1?.props || {};
+      const { width: pW2 = 1 } = pNode2?.props || {};
+      _extraStyle.windowBoundW = {
+        [windowBoundW]: { w: targetWidth, per: targetWidth / pW2 },
+        1920: { w: width, per: width / pW1 },
+      };
     }
 
     if (Array.isArray(children) && Array.isArray(targetChildren)) {
       children.forEach((child, index) => {
-        recordWindowBoundW({ node1: child, node2: targetChildren[index] });
+        recordWindowBoundW({
+          node1: child,
+          pNode1: node1,
+          node2: targetChildren[index],
+          pNode2: node2,
+        });
       });
     }
   };
