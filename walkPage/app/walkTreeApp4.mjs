@@ -142,7 +142,7 @@ async function writeJSON({ jsonStr, url }) {
       setTimeout(async () => {
         await browser.close();
       }, 1000);
-    }, 4000);
+    }, 3000);
   });
   // 设置超时为 90 秒
   await page.goto(recvUrl, { timeout: 90000 });
