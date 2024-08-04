@@ -372,6 +372,7 @@ class Figma2IvxAbs {
         if (
           this.checkIsButton(childNode) ||
           this.checkIsImage(childNode) ||
+          this.checkIsGridWrap({ node: childNode }) ||
           childNode.isSVG
         ) {
           canReplaceChild = childNode;
@@ -439,6 +440,46 @@ class Figma2IvxAbs {
         x1 > x2 || y1 > y2 || x1 + w1 < x2 + w2 || y1 + h1 < y2 + h2;
       return isIntersect;
     }
+  };
+  // 判断是否是grid容器
+  checkIsGridWrap = ({ node }) => {
+    let { children } = node || {};
+    if (!(Array.isArray(children) && children.length > 3)) return;
+    let cloneChildren = [...children];
+    // 按x和y排序
+    cloneChildren.sort((a, b) => {
+      let { x: x1, y: y1 } = a || {};
+      let { x: x2, y: y2 } = b || {};
+      if (this.isEqualXYWH({ source: y1, target: y2 })) {
+        return x1 - x2;
+      }
+      return y1 - y2;
+    });
+    // 确定行的高度和列的高度
+    const rowHeight = new Set();
+    const colWidth = new Set();
+    const rows = [[]];
+    let currentRowY = cloneChildren[0]?.y;
+    // 收集行
+    for (const child of cloneChildren) {
+      let { x, y, width, height } = child || {};
+      rowHeight.add(width);
+      colWidth.add(height);
+      if (!this.isEqualXYWH({ source: currentRowY, target: y })) {
+        currentRowY = y;
+        rows.push([]);
+      }
+      rows[rows.length - 1].push(child);
+    }
+    let gridLayout = false;
+    if (rowHeight.size === 1 && colWidth.size === 1) {
+      gridLayout = true;
+    }
+    return gridLayout;
+  };
+  isEqualXYWH = ({ source, target }) => {
+    let detla = Math.abs(source - target);
+    return detla < 2;
   };
   checkTextChild = ({ node }) => {
     if (node.children.length > 0) {
