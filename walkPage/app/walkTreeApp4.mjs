@@ -123,7 +123,7 @@ async function writeJSON({ jsonStr, url }) {
 
       // 使用 DevTools 协议动态调整浏览器窗口大小1440
       const client = await page.target().createCDPSession();
-      let windowBoundW = 1440;
+      let windowBoundW = 1600;
       await client.send('Browser.setWindowBounds', {
         windowId: (await client.send('Browser.getWindowForTarget')).windowId,
         bounds: { width: windowBoundW, height: 1080 },
