@@ -9,7 +9,8 @@ import os from 'os';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const defaultWindowBoundW = 1900;
-const windowBoundW = 1600;
+const windowBoundW1 = 1750;
+const windowBoundW2 = 1600;
 
 async function writeJSON({ jsonStr, url }) {
   fs.writeFileSync(url, jsonStr, 'utf-8');
@@ -111,6 +112,24 @@ async function writeJSON({ jsonStr, url }) {
         });
         return figma2ivxabs.exec({ env: 'abs' });
       };
+      const getIvxCaseBySetWindowBounds = async ({
+        client,
+        windowBoundW,
+        sourceIvxCase,
+        page,
+      }) => {
+        await client.send('Browser.setWindowBounds', {
+          windowId: (await client.send('Browser.getWindowForTarget')).windowId,
+          bounds: { width: windowBoundW, height: 1080 },
+        });
+        await page.setViewport({ width: windowBoundW, height: 800 });
+        let rs = await getIvxCase({
+          outputFigmaJSON: true,
+          windowBoundW,
+        });
+        recordNodeW({ source: sourceIvxCase, target: rs, windowBoundW });
+      };
+
       let result = await getIvxCase({
         outputFigmaJSON: true,
         windowBoundW: defaultWindowBoundW,
@@ -118,14 +137,18 @@ async function writeJSON({ jsonStr, url }) {
 
       // 使用 DevTools 协议动态调整浏览器窗口大小
       const client = await page.target().createCDPSession();
-      await client.send('Browser.setWindowBounds', {
-        windowId: (await client.send('Browser.getWindowForTarget')).windowId,
-        bounds: { width: windowBoundW, height: 1080 },
+      await getIvxCaseBySetWindowBounds({
+        client,
+        windowBoundW: windowBoundW1,
+        sourceIvxCase: result,
+        page,
       });
-      await page.setViewport({ width: windowBoundW, height: 800 });
-      let rs = await getIvxCase({ outputFigmaJSON: true, windowBoundW });
-
-      recordNodeW({ source: result, target: rs, windowBoundW });
+      await getIvxCaseBySetWindowBounds({
+        client,
+        windowBoundW: windowBoundW2,
+        sourceIvxCase: result,
+        page,
+      });
 
       let url = 'output/layerTree/result' + dateTime + '.json';
       writeJSON({ jsonStr: JSON.stringify(result), url: url });
@@ -156,10 +179,10 @@ function recordNodeW({ source, target, windowBoundW }) {
     if (width !== targetWidth && _extraStyle) {
       const { width: pW1 = 1 } = pNode1?.props || {};
       const { width: pW2 = 1 } = pNode2?.props || {};
-      _extraStyle.windowBoundW = {
+      _extraStyle.windowBoundW = Object.assign(_extraStyle.windowBoundW || {}, {
         [windowBoundW]: { w: targetWidth, per: targetWidth / pW2 },
         [defaultWindowBoundW]: { w: width, per: width / pW1 },
-      };
+      });
     }
 
     if (Array.isArray(children) && Array.isArray(targetChildren)) {

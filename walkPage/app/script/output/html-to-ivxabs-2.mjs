@@ -1721,11 +1721,13 @@ export default function walkPage(paramArg) {
     }
   };
   recordExtraStyle.getGrid = ({ extraStyle, computedStyle }) => {
-    const { display, gridTemplateColumns, gridTemplateRows } = computedStyle;
+    const { display, gridTemplateColumns, gridTemplateRows, gridGap } =
+      computedStyle;
     if (display === 'grid' || display === 'inline-grid') {
       extraStyle.gridTemplateColumns = gridTemplateColumns;
       extraStyle.gridTemplateRows = gridTemplateRows;
       extraStyle.gridAutoFlow = computedStyle.gridAutoFlow;
+      extraStyle.gridGap = gridGap;
     }
   };
 
