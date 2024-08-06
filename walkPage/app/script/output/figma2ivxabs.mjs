@@ -38,6 +38,7 @@ function genCaseData() {
         width: '100%',
         height: '100%',
         backgroundColor: '#FFFFFF',
+        hideScrollBar: true,
         swipeFlipPage: 'none',
         fonts: {},
         pageCustomIdList: [null],
@@ -305,7 +306,8 @@ class Figma2IvxAbs {
       this.checkIsButton(node) ||
       this.checkIsImage(node) ||
       node.isSVG ||
-      node.visible === false
+      node.visible === false ||
+      this.checkIsGridItem({ pNode })
     ) {
       return false;
     }
@@ -675,7 +677,6 @@ class Figma2IvxAbs {
         return false;
     }
   };
-
   checkIsImage = (node) => {
     switch (node.type) {
       case 'INSTANCE':
@@ -706,6 +707,10 @@ class Figma2IvxAbs {
         break;
     }
     return false;
+  };
+  checkIsGridItem = ({ pNode }) => {
+    let { display } = pNode?._extraStyle || {};
+    return display === 'grid';
   };
   walkIvxNode(ivxNode) {
     if (!ivxNode) {

@@ -8,6 +8,8 @@ import os from 'os';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
+const defaultWindowBoundW = 1900;
+const windowBoundW = 1600;
 
 async function writeJSON({ jsonStr, url }) {
   fs.writeFileSync(url, jsonStr, 'utf-8');
@@ -28,7 +30,7 @@ async function writeJSON({ jsonStr, url }) {
     args: [
       '--no-sandbox',
       '--disable-dev-shm-usage',
-      '--window-size=1920,1080',
+      `--window-size=${defaultWindowBoundW},1080`,
     ],
   };
   if (os.type() !== 'Windows_NT') {
@@ -37,6 +39,8 @@ async function writeJSON({ jsonStr, url }) {
   }
   const browser = await puppeteer.launch(opts);
   const page = await browser.newPage();
+  // 设置视口宽度
+  await page.setViewport({ width: defaultWindowBoundW, height: 800 });
 
   page.setUserAgent(
     'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36'
@@ -44,26 +48,11 @@ async function writeJSON({ jsonStr, url }) {
 
   let loadCnt = 0;
 
-  let imgDict = {};
+  // let imgDict = {};
+  // 设置超时为 90 秒
+  await page.goto(recvUrl, { timeout: 90000, waitUntil: 'networkidle2' });
 
-  // page.on('request', request => {
-  //     if (request.resourceType() === 'image') {
-  //         const imageUrl = request.url();
-  //         const fileName = imageUrl.substring(imageUrl.lastIndexOf('/') + 1);
-  //         const savePath = `images/${fileName}`;
-  //         request.
-  //         //   request.buffer().then(buffer => fs.writeFileSync(savePath, buffer));
-  //         console.log("debug imgUrls:", imageUrl)
-  //         if (!imageUrl.startsWith("data")) {
-  //             imgDict[imageUrl] = {
-  //                 done: false,
-  //                 ivxUrl: ""
-  //             }
-  //         }
-  //     }
-  // });
-
-  page.on('domcontentloaded', async () => {
+  let processLoaded = async () => {
     loadCnt++;
     if (loadCnt > 1) {
       return;
@@ -106,7 +95,10 @@ async function writeJSON({ jsonStr, url }) {
 
       const dateTime = Date.now();
 
-      const getIvxCase = async ({ outputFigmaJSON, windowBoundW = 1920 }) => {
+      const getIvxCase = async ({
+        outputFigmaJSON,
+        windowBoundW = defaultWindowBoundW,
+      }) => {
         const figmaJSON = await page.evaluate(walkPage);
         if (os.type() == 'Windows_NT' && outputFigmaJSON) {
           writeJSON({
@@ -119,16 +111,19 @@ async function writeJSON({ jsonStr, url }) {
         });
         return figma2ivxabs.exec({ env: 'abs' });
       };
-      let result = await getIvxCase({ outputFigmaJSON: true });
+      let result = await getIvxCase({
+        outputFigmaJSON: true,
+        windowBoundW: defaultWindowBoundW,
+      });
 
-      // 使用 DevTools 协议动态调整浏览器窗口大小1440
+      // 使用 DevTools 协议动态调整浏览器窗口大小
       const client = await page.target().createCDPSession();
-      let windowBoundW = 1600;
       await client.send('Browser.setWindowBounds', {
         windowId: (await client.send('Browser.getWindowForTarget')).windowId,
         bounds: { width: windowBoundW, height: 1080 },
       });
-      let rs = await getIvxCase({ outputFigmaJSON: false, windowBoundW });
+      await page.setViewport({ width: windowBoundW, height: 800 });
+      let rs = await getIvxCase({ outputFigmaJSON: true, windowBoundW });
 
       recordNodeW({ source: result, target: rs, windowBoundW });
 
@@ -142,10 +137,9 @@ async function writeJSON({ jsonStr, url }) {
       setTimeout(async () => {
         await browser.close();
       }, 1000);
-    }, 3000);
-  });
-  // 设置超时为 90 秒
-  await page.goto(recvUrl, { timeout: 90000 });
+    }, 2000);
+  };
+  processLoaded();
 })();
 
 function recordNodeW({ source, target, windowBoundW }) {
@@ -164,7 +158,7 @@ function recordNodeW({ source, target, windowBoundW }) {
       const { width: pW2 = 1 } = pNode2?.props || {};
       _extraStyle.windowBoundW = {
         [windowBoundW]: { w: targetWidth, per: targetWidth / pW2 },
-        1920: { w: width, per: width / pW1 },
+        [defaultWindowBoundW]: { w: width, per: width / pW1 },
       };
     }
 
