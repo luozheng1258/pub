@@ -1622,8 +1622,15 @@ export default function walkPage(paramArg) {
 
   // 记录额外的style信息，方便编辑器中转相对定位时使用
   function recordExtraStyle({ layer, computedStyle }) {
-    const { textAlign, whiteSpace, display, position, flex, float } =
-      computedStyle || {};
+    const {
+      textAlign,
+      whiteSpace,
+      display,
+      position,
+      flex,
+      float,
+      pointerEvents,
+    } = computedStyle || {};
     let extraStyle = {
       textAlign,
       whiteSpace,
@@ -1644,6 +1651,10 @@ export default function walkPage(paramArg) {
     if (float !== 'none') {
       extraStyle.float = float;
     }
+    if (pointerEvents !== 'auto') {
+      extraStyle.pointerEvents = pointerEvents;
+    }
+
     recordExtraStyle.getPadding({ extraStyle, computedStyle });
     recordExtraStyle.getMargin({ extraStyle, computedStyle });
 

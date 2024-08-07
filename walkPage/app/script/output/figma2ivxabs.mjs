@@ -117,6 +117,10 @@ class Figma2IvxAbs {
             children: [ivxFigmaData],
             envs: ['abs'],
           };
+          if (node.zIndex) {
+            // 给横幅添加层级
+            fixedWrap.props.zIndex = node.zIndex;
+          }
           if (ivxFigmaData) {
             this.walkIvxNode(fixedWrap);
             ivxNodes.push(fixedWrap);

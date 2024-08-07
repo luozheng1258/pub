@@ -284,6 +284,16 @@ function convertBaseProps({ target, node, env, parent }) {
   // uis中记录额外样式信息
   if (node._extraStyle) {
     target.uis._extraStyle = node._extraStyle;
+    // 记录需要额外作为自定义的样式存在的属性
+    const recordCustomStyles = ['pointerEvents'];
+    for (let key of recordCustomStyles) {
+      if (node._extraStyle[key]) {
+        target.styleList = target.styleList.concat({
+          name: key,
+          value: node._extraStyle[key],
+        });
+      }
+    }
   }
 }
 
