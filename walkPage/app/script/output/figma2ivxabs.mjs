@@ -323,6 +323,10 @@ class Figma2IvxAbs {
         source: node._extraStyle,
         target: canMergeChild._extraStyle,
       });
+      // 合并时如果当前没有zInde,合并对象存在，则记录下zIndex
+      if (node.zIndex == undefined && canMergeChild.zIndex) {
+        node.zIndex = canMergeChild.zIndex;
+      }
     }
 
     // 节点有背景色，有边框的情况，就先行保留
