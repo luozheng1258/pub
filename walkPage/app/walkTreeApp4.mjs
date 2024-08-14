@@ -36,7 +36,7 @@ async function writeJSON({ jsonStr, url }) {
   };
   if (os.type() !== 'Windows_NT') {
     // 非windows系统,使用chrome的执行路径
-    opts.executablePath = '/usr/bin/google-chrome';
+    // opts.executablePath = '/usr/bin/google-chrome';
   }
   const browser = await puppeteer.launch(opts);
   const page = await browser.newPage();
