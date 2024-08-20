@@ -8,7 +8,7 @@ import os from 'os';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
-const defaultWindowBoundW = 1900;
+const defaultWindowBoundW = 1890;
 const windowBoundW1 = 1750;
 const windowBoundW2 = 1600;
 
@@ -176,7 +176,7 @@ function recordNodeW({ source, target, windowBoundW }) {
     let { width: targetWidth } = targetProps || {};
     let { _extraStyle } = uis || {};
 
-    if (width !== targetWidth && _extraStyle) {
+    if (width && targetWidth && width !== targetWidth && _extraStyle) {
       const { width: pW1 = 1 } = pNode1?.props || {};
       const { width: pW2 = 1 } = pNode2?.props || {};
       _extraStyle.windowBoundW = Object.assign(_extraStyle.windowBoundW || {}, {

@@ -298,8 +298,25 @@ class Figma2IvxAbs {
     }
   };
   mergeExtraStyle = ({ source, target }) => {
-    const { position, float } = source || {};
-    return target ? { ...target, position, float } : target;
+    const {
+      position,
+      float,
+      paddingTop,
+      paddingRight,
+      paddingBottom,
+      paddingLeft,
+    } = source || {};
+    return target
+      ? {
+          ...target,
+          position,
+          float,
+          paddingTop,
+          paddingRight,
+          paddingBottom,
+          paddingLeft,
+        }
+      : target;
   };
 
   checkCanMerge = ({ node, pNode }) => {
