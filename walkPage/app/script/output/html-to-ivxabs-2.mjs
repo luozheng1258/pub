@@ -834,6 +834,9 @@ export default function walkPage(paramArg) {
             if (fontSize) {
               textNode.fontSize = parseFloat(fontSize.value);
             }
+            if (computedStyles.fontWeight) {
+              textNode.fontWeight = computedStyles.fontWeight;
+            }
             if (computedStyles.fontFamily) {
               // const font = computedStyles.fontFamily.split(/\s*,\s*/);
               textNode.fontFamily = computedStyles.fontFamily;
