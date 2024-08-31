@@ -16,7 +16,8 @@ function genTextNode({ node, env, parent }) {
       height: 0,
       x: 0,
       y: 0,
-      letterSpacing: -1,
+      // 取消设置字体间距，避免淘宝网上字体间距太小
+      // letterSpacing: -1,
       textOverflow: 'unset',
     },
     id: '',

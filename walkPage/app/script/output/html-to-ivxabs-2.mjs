@@ -1,4 +1,6 @@
-export default function walkPage(paramArg) {
+export default walkPage;
+
+function walkPage(paramArg) {
   function htmlToFigma(
     selector = document.body,
     useFrames = false,
@@ -7,80 +9,8 @@ export default function walkPage(paramArg) {
   ) {
     !window.domCnt && (window.domCnt = {});
     let bodyDeltaY = document.body.getBoundingClientRect().y;
-    // function getDirectionMostOfElements(direction, elements) {
-    //     if (elements.length === 1) {
-    //         return elements[0];
-    //     }
-    //     return elements.reduce((memo, value) => {
-    //         if (!memo) {
-    //             return value;
-    //         }
-    //         if (direction === "left" || direction === "top") {
-    //             if (
-    //                 getBoundingClientRect(value)[direction] <
-    //                 getBoundingClientRect(memo)[direction]
-    //             ) {
-    //                 return value;
-    //             }
-    //         } else {
-    //             if (
-    //                 getBoundingClientRect(value)[direction] >
-    //                 getBoundingClientRect(memo)[direction]
-    //             ) {
-    //                 return value;
-    //             }
-    //         }
-    //         return memo;
-    //     }, null);
-    // }
-
-    // function getAggregateRectOfElements(elements) {
-    //     if (!elements.length) {
-    //         return null;
-    //     }
-    //     const top = getBoundingClientRect(
-    //         getDirectionMostOfElements("top", elements)
-    //     ).top;
-    //     const left = getBoundingClientRect(
-    //         getDirectionMostOfElements("left", elements)
-    //     ).left;
-    //     const bottom = getBoundingClientRect(
-    //         getDirectionMostOfElements("bottom", elements)
-    //     ).bottom;
-    //     const right = getBoundingClientRect(
-    //         getDirectionMostOfElements("right", elements)
-    //     ).right;
-    //     const width = right - left;
-    //     const height = bottom - top;
-    //     return {
-    //         top,
-    //         left,
-    //         bottom,
-    //         right,
-    //         width,
-    //         height,
-    //     };
-    // }
 
     function getBoundingClientRect(el) {
-      // 因为读取的全是绝对定位位置，所以目前不需要对inline模式做额外区分
-      // const computed = getComputedStyle(el);
-      // const display = computed.display;
-      // if (display && display.includes("inline") && el.children.length) {
-      //     const elRect = el.getBoundingClientRect();
-      //     const aggregateRect = getAggregateRectOfElements(Array.from(el.children));
-      //     if (
-      //         elRect.width > aggregateRect.width ||
-      //         elRect.height > aggregateRect.height
-      //     ) {
-      //         return Object.assign(Object.assign({}, aggregateRect), {
-      //             width: elRect.width,
-      //             left: elRect.left,
-      //             right: elRect.right,
-      //         });
-      //     }
-      //     return aggregateRect;
-      // }
       let rect = el.getBoundingClientRect();
       rect.y = rect.y - bodyDeltaY;
       rect.top = rect.top - bodyDeltaY;
@@ -282,9 +212,6 @@ export default function walkPage(paramArg) {
 
       if (els) {
         Array.from(els).forEach((el) => {
-          // if (isHidden(el)) {
-          //   return;
-          // }
           if (el instanceof SVGSVGElement) {
             const rect = getBoundingClientRect(el);
 
@@ -306,11 +233,11 @@ export default function walkPage(paramArg) {
 
             // todo ivxLayers
             return;
-          }
-          // Sub SVG Eleemnt
-          else if (el instanceof SVGElement) {
+          } else if (el instanceof SVGElement) {
+            // Sub SVG Eleemnt
             return;
           }
+
           if (
             el.parentElement &&
             el.parentElement instanceof HTMLPictureElement
@@ -342,6 +269,8 @@ export default function walkPage(paramArg) {
               }
               const rectNode = {
                 type: 'RECTANGLE',
+                tagName: el.tagName,
+                nodeId: el.id,
                 ref: el,
                 x: parseFloat(rect.left),
                 y: parseFloat(rect.top),
@@ -349,35 +278,11 @@ export default function walkPage(paramArg) {
                 height: parseFloat(rect.height),
                 fills: fills,
               };
-              if (el.className && el.className.split(' ')[0] === 'ace-btn') {
-                debugger;
-              }
 
               if (includeMetadata) {
                 rectNode.meta = { originalStyles: appliedStyles };
               }
 
-              // if (computedStyle.border) {
-              //     const parsed = computedStyle.border.match(
-              //         /^([\d\.]+)px\s*(\w+)\s*(.*)$/
-              //     );
-              //     if (parsed) {
-              //         let [_match, width, type, color] = parsed;
-              //         if (width && width !== "0" && type !== "none" && color) {
-              //             const rgb = getRgb(color);
-              //             if (rgb) {
-              //                 rectNode.strokes = [
-              //                     {
-              //                         type: "SOLID",
-              //                         color: { r: rgb.r, b: rgb.b, g: rgb.g },
-              //                         opacity: rgb.a || 1,
-              //                     },
-              //                 ];
-              //                 rectNode.strokeWeight = parseFloat(parseFloat(width));
-              //             }
-              //         }
-              //     }
-              // }
               // 边框改为四边分开记录
               if (computedStyle.borderTop) {
                 const parsed = computedStyle.borderTop.match(
@@ -622,6 +527,23 @@ export default function walkPage(paramArg) {
                       isImage: true,
                     });
                   }
+                } else {
+                  const img = el.querySelector('img');
+                  if (img) {
+                    const url = img.src;
+                    if (url) {
+                      fills.push({
+                        url,
+                        type: 'IMAGE',
+                        scaleMode:
+                          computedStyle.objectFit === 'contain'
+                            ? 'FIT'
+                            : 'FILL',
+                        imageHash: null,
+                        isImage: true,
+                      });
+                    }
+                  }
                 }
               }
               if (el instanceof HTMLVideoElement) {
@@ -725,6 +647,7 @@ export default function walkPage(paramArg) {
                 rectNode.cornerRadius = 'figma.mixed';
                 rectNode.bottomLeftRadius = borderBottomLeftRadius.value;
               }
+
               layers.push(rectNode);
             }
           }
@@ -771,13 +694,18 @@ export default function walkPage(paramArg) {
 
             rect.y = rect.y - bodyDeltaY;
             rect.top = rect.top - bodyDeltaY;
-
             //   const rect = fastClone(parent.getBoundingClientRect());
             const lineHeight = parseUnits(computedStyles.lineHeight);
             range.detach();
-            if (lineHeight && rect.height < lineHeight.value) {
-              const delta = lineHeight.value - rect.height;
-              rect.top -= delta / 2;
+            // fix TextNode节点通过选取区域计算出来的高度和实际位于父节点上的高度不一致问题
+            // 由于存在文本换行问题，故比较偏差值小于6px的情况下，将文本节点的高度设置为lineHeight的值
+            if (
+              lineHeight &&
+              (rect.height < lineHeight.value ||
+                Math.abs(rect.height - lineHeight.value) < 10)
+            ) {
+              const delta = rect.height - lineHeight.value;
+              rect.top += delta / 2;
               rect.height = lineHeight.value;
             }
             if (rect.height < 1 || rect.width < 1) {
@@ -1464,7 +1392,7 @@ export default function walkPage(paramArg) {
           if (layer.ref.tagName !== 'BODY') {
             let parentNode = layer.ref.parentElement;
             let findParent = false;
-            while (parentNode.tagName !== 'BODY' && !findParent) {
+            while (parentNode && parentNode.tagName !== 'BODY' && !findParent) {
               if (parentNode.dataset && parentNode.dataset.__dom_id) {
                 layer.ref.dataset.__parent_id = parentNode.dataset.__dom_id;
                 parent_id = parentNode.dataset.__dom_id;

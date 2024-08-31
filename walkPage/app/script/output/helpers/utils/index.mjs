@@ -1,7 +1,13 @@
 function isEmptyContainer({ node, target, parent }) {
   const { children, _extraStyle } = node || {};
   const { children: parentChildren } = parent || {};
+  const { styleList } = target || {};
   const { borderWidth, bgColor, width, height } = target?.props || {};
+  // 排除自定义样式中存在背景图片的情况
+  let existBgImg = styleList?.find((item) => item.name === 'backgroundImage');
+  if (existBgImg) {
+    return false;
+  }
 
   // 检查是否为空容器，如果是空容器则进行移除
   // 条件1 没有子节点
@@ -13,7 +19,7 @@ function isEmptyContainer({ node, target, parent }) {
   ) {
     // 条件2 没有边框宽度
     if (borderWidth == 0) {
-      // 条件3 没有背景色或者背景色
+      // 条件3 没有背景色
       if (!bgColor) {
         return true;
       }

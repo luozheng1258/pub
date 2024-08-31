@@ -49,7 +49,7 @@ async function writeJSON({ jsonStr, url }) {
 
   let loadCnt = 0;
 
-  // let imgDict = {};
+  // 设置 HTTP 头，确保使用 UTF-8 编码
   // 设置超时为 90 秒
   await page.goto(recvUrl, { timeout: 90000, waitUntil: 'networkidle2' });
 
@@ -93,6 +93,11 @@ async function writeJSON({ jsonStr, url }) {
           }, 500);
         });
       });
+
+      let matchs = recvUrl.match(/^https?:\/\/(.*?)(\/?)$/);
+      let name = matchs ? matchs[1].replaceAll('.', '_') : 'example';
+      // 截图并保存为example.png
+      // await page.screenshot({ path: `output/layerTreeOrigin/${name}.jpeg` });
 
       const dateTime = Date.now();
 

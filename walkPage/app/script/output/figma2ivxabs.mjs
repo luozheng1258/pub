@@ -92,13 +92,14 @@ class Figma2IvxAbs {
     this.ivxNodes = [];
 
     this.exec = this.exec.bind(this);
+    this.fontFamilyMap = {}; // 案例里面字体记录表
   }
 
   exec({ env }) {
     const { figmaNodes, ivxNodes } = this;
     let ivxFigmaData = {};
     let caseData = genCaseData();
-    let container = caseData.stage.children[1];
+    let pageContainer = caseData.stage.children[1];
     figmaNodes.forEach((node) => {
       // console.log('debug selected pluginData', node, node.fills)
       if (node.type === 'FRAME' || node.type === 'GROUP') {
@@ -133,7 +134,8 @@ class Figma2IvxAbs {
         }
       }
     });
-    container.children = ivxNodes;
+    pageContainer.children = ivxNodes;
+    this.addFontFamilyToPage({ pageNode: pageContainer });
     return caseData;
   }
 
@@ -168,6 +170,7 @@ class Figma2IvxAbs {
             objData = genSvgNodeV2({ node, env, parent });
             break;
           case 'TEXT':
+            this.recordFontFamily({ node });
             objData = genTextNode({ node, env, parent });
             break;
           case 'INPUT':
@@ -258,11 +261,11 @@ class Figma2IvxAbs {
           return false;
         }
         // 如果当前node为父节点唯一子节点，且子节点为图片或者无填充，就删除
+        // fix fill中type为SOILD，opacity不为0的情况下，节点被删除问题
         if (
           lastChild &&
           (node.fills.length == 0 ||
-            node.fills[0].type != 'IMAGE' ||
-            node.fills[0].opacity == 0)
+            (node.fills[0].type != 'IMAGE' && node.fills[0].opacity == 0))
         ) {
           return true;
         }
@@ -371,7 +374,12 @@ class Figma2IvxAbs {
       if (pNode && pNode?.children?.length > 1) {
         let { width, height } = node;
         let { width: rw, height: rh } = canReplaceChild;
-        if (width !== rw || height !== rh) return;
+        if (
+          !this.isEqualXYWH({ source: width, target: rw }) ||
+          !this.isEqualXYWH({ source: height, target: rh })
+        ) {
+          return;
+        }
       }
 
       for (let key in canReplaceChild) {
@@ -386,6 +394,7 @@ class Figma2IvxAbs {
         }
       }
     }
+
     // abspos ver
     function checkChild(node) {
       if (node.children && node.children.length === 1) {
@@ -759,5 +768,29 @@ class Figma2IvxAbs {
       return;
     }
   }
+  recordFontFamily = ({ node }) => {
+    const { fontFamily } = node || {};
+    if (fontFamily) {
+      this.fontFamilyMap[fontFamily] = this.fontFamilyMap[fontFamily] || 0;
+      this.fontFamilyMap[fontFamily] += 1;
+    }
+  };
+  addFontFamilyToPage = ({ pageNode }) => {
+    let fontFamily;
+    let counter = 0;
+    for (let key in this.fontFamilyMap) {
+      if (this.fontFamilyMap[key] > counter) {
+        counter = this.fontFamilyMap[key];
+        fontFamily = key;
+        break;
+      }
+    }
+    if (!fontFamily) return;
+    pageNode.styleList = pageNode.styleList || [];
+    pageNode.styleList.push({
+      name: 'fontFamily',
+      value: fontFamily,
+    });
+  };
 }
 export default Figma2IvxAbs;
