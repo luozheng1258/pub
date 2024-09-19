@@ -1,30 +1,13 @@
 import { processFills } from './utils/fills.mjs';
 import { convertBaseProps } from './utils/baseProps.mjs';
+import { getIvxFontWeight } from './utils/index.mjs';
 
-// const { processFills } = require('./utils/fills')
-// const { convertBaseProps } = require('./utils/baseProps')
-
-// 生成图片节点
-function genButtonNode({ node, env, parent }) {
-  let childNodes = node.children;
-  let textVal = '',
-    textNode = null;
-  // console.log('is button', node, env, parent)
-  let svgNode = null;
-
-  childNodes.forEach((childNode) => {
-    if (childNode.type === 'TEXT') {
-      textVal = childNode.characters;
-      textNode = childNode;
-    } else if (childNode.isSVG) {
-      svgNode = childNode;
-    }
-  });
-  const btnTemp = {
+function genBaseBtnJson() {
+  return {
     type: 'ih5-button',
     props: {},
     uis: {
-      name: node.name,
+      name: '',
     },
     children: [],
     envs: ['abs'],
@@ -35,48 +18,34 @@ function genButtonNode({ node, env, parent }) {
       },
     ], // 添加默认内容不换行样式
   };
-  const target = btnTemp;
+}
+
+// 生成button节点
+function genButtonNode({ node, env, parent }) {
+  let childNodes = node.children;
+  let textVal = '',
+    textNode = null;
+  let svgNode = null;
+
+  childNodes.forEach((childNode) => {
+    if (childNode.type === 'TEXT') {
+      textVal = childNode.characters;
+      textNode = childNode;
+    } else if (childNode.isSVG) {
+      svgNode = childNode;
+    }
+  });
+  const target = genBaseBtnJson();
 
   convertBaseProps({ target, node, env, parent });
 
   if (textNode) {
-    // 处理fills
-    if (Array.isArray(textNode.fills) && textNode.fills.length > 0) {
-      let ret = processFills({ fills: textNode.fills, target });
-      if (ret.solidColor || ret.linearGradient) {
-        target.props.fontColor = ret.linearGradient || ret.solidColor;
-      }
-    }
-
-    if (textNode.fontSize !== 'figma.mixed') {
-      target.props.fontSize = textNode.hasOwnProperty('fontSize')
-        ? textNode.fontSize
-        : textNode.style?.fontSize;
-    }
+    processFontSetting({ textNode, target });
 
     target.styleList.push({
       name: 'letterSpacing',
       value: -1 + 'px',
     });
-
-    // 处理字体样式
-    let textDecoration = textNode.hasOwnProperty('textDecoration')
-      ? textNode.textDecoration
-      : textNode.style?.textDecoration;
-    target.props.textDecoration =
-      textDecoration === 'UNDERLINE'
-        ? 'underline'
-        : textDecoration === 'STRIKETHROUGH'
-        ? 'line-through'
-        : '';
-
-    let fontWeight = textNode.hasOwnProperty('textDecoratfontWeightion')
-      ? textNode.fontWeight
-      : textNode.style?.fontWeight;
-    if (fontWeight) {
-      target.props.fontWeight = fontWeight;
-      // textTemp.styleList.push({ name: 'fontWeight', value: node.fontWeight })
-    }
 
     //lineHeight属性在ih5-text中处理比较特殊，因此使用自定义属性覆盖
     let tempLineHiehgt = '';
@@ -133,16 +102,61 @@ function genButtonNode({ node, env, parent }) {
       name: svgNode.name,
       url: svgNode.rawSvg || svgNode.svg,
     };
-    // target.props.iconSize = svgNode.size?.y
     target.props.iconSize = svgNode.height || svgNode.size?.y;
-
-    // console.log('is svg btn', svgNode, node, target)
-    // debugger
   }
   return target;
 }
 
-export { genButtonNode };
-// module.exports = {
-//     genButtonNode,
-// };
+// 有input的submit类型，转为button类型
+function genSubmitButtonNode({ node, env, parent }) {
+  const target = genBaseBtnJson();
+  convertBaseProps({ target, node, env, parent });
+  // 按钮文字
+  target.props.text = node.value;
+  processFontSetting({
+    textNode: node,
+    target,
+    fontColorField: 'fontColorFills',
+  });
+  return target;
+}
+
+// 处理字体设置
+function processFontSetting({ textNode, target, fontColorField = 'fills' }) {
+  // 字体颜色
+  const fills = textNode[fontColorField];
+  if (Array.isArray(fills) && fills.length > 0) {
+    let ret = processFills({ fills: fills, target });
+    if (ret.solidColor || ret.linearGradient) {
+      target.props.fontColor = ret.linearGradient || ret.solidColor;
+    }
+  }
+  // 文字大小
+  if (textNode.fontSize !== 'figma.mixed') {
+    target.props.fontSize = textNode.hasOwnProperty('fontSize')
+      ? textNode.fontSize
+      : textNode.style?.fontSize;
+  }
+  // 处理字体样式
+  let textDecoration = textNode.hasOwnProperty('textDecoration')
+    ? textNode.textDecoration
+    : textNode.style?.textDecoration;
+  target.props.textDecoration =
+    textDecoration === 'UNDERLINE'
+      ? 'underline'
+      : textDecoration === 'STRIKETHROUGH'
+      ? 'line-through'
+      : '';
+  let fontWeight = getIvxFontWeight({ textNode });
+  if (fontWeight === 'bold') {
+    target.props.fontWeight = fontWeight;
+    target.props.textStyle = (target.props.textStyle || 0) | 4;
+  } else if (fontWeight) {
+    target.styleList.push({
+      name: 'fontWeight',
+      value: fontWeight,
+    });
+  }
+}
+
+export { genButtonNode, genSubmitButtonNode };

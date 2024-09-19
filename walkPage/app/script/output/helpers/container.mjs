@@ -1,24 +1,11 @@
 import { calcFillColor } from './utils/color.mjs';
 import { genImageNode } from './image.mjs';
 import { convertBaseProps } from './utils/baseProps.mjs';
-import { isEmptyContainer } from './utils/index.mjs';
+import { isEmptyContainer, isImageNode } from './utils/index.mjs';
 
 // 生成容器节点
 function genContainerNode({ node, env, parent }) {
-  const { fills } = node;
-  let isImage = false;
-  if (Array.isArray(fills) && fills.length > 0) {
-    for (const paint of fills) {
-      if (
-        paint.type === 'IMAGE' &&
-        (paint.visible || !paint.hasOwnProperty('visible')) &&
-        paint.opacity !== 0
-      ) {
-        isImage = true;
-      }
-    }
-  }
-  if (isImage && node.children?.length == 0) {
+  if (isImageNode({ node }) && node.children?.length == 0) {
     return genImageNode({ node, env, parent });
   }
 
@@ -52,39 +39,7 @@ function genContainerNode({ node, env, parent }) {
     envs: ['rel'],
   };
   let target = {};
-  // if (node.layoutMode === 'HORIZONTAL') {
-  //   target = rowTemp
-  //   const vDict = {
-  //     MIN: 'top',
-  //     CENTER: 'center',
-  //     MAX: 'bottom',
-  //     BASELINE: 'bottom'
-  //   }
-  //   const hDict = {
-  //     MIN: 'left',
-  //     CENTER: 'center',
-  //     MAX: 'right',
-  //     SPACE_BETWEEN: 'space-between'
-  //   }
-  //   target.props.vertical = vDict[node.counterAxisAlignItems]
-  //   target.props.horizon = hDict[node.primaryAxisAlignItems]
-  // } else if (node.layoutMode === 'VERTICAL') {
-  //   target = colTemp
-  //   const vDict = {
-  //     MIN: 'top',
-  //     CENTER: 'center',
-  //     MAX: 'bottom',
-  //     SPACE_BETWEEN: 'space-between'
-  //   }
-  //   const hDict = {
-  //     MIN: 'left',
-  //     CENTER: 'center',
-  //     MAX: 'right',
-  //     BASELINE: 'left'
-  //   }
-  //   target.props.vertical = vDict[node.primaryAxisAlignItems]
-  //   target.props.horizon = hDict[node.counterAxisAlignItems]
-  // } else if (node.layoutMode === 'NONE' || !node.layoutMode) {
+
   target = absTemp;
   if (env === 'abs') {
     target.type = 'ih5-container';

@@ -149,29 +149,7 @@ function convertBaseProps({ target, node, env, parent }) {
     }
 
     // 处理padding (css中设置padding时会影响宽高，但figma中不会)
-    let {
-      paddingLeft = 0,
-      paddingRight = 0,
-      paddingBottom = 0,
-      paddingTop = 0,
-    } = node;
-    if (paddingLeft + paddingRight < figmaSize.width) {
-      if (node.paddingLeft) {
-        target.props.paddingLeft = node.paddingLeft;
-      }
-      if (node.paddingRight) {
-        target.props.paddingRight = node.paddingRight;
-      }
-    }
-    if (paddingBottom + paddingTop < figmaSize.height) {
-      if (node.paddingBottom) {
-        target.props.paddingBottom = node.paddingBottom;
-      }
-      if (node.paddingTop) {
-        target.props.paddingTop = node.paddingTop;
-      }
-    }
-
+    processPadding({ node, target });
     // 处理换行问题
     if (node.layoutWrap === 'WRAP') {
       target.props.flexWrap = true;
@@ -284,20 +262,46 @@ function convertBaseProps({ target, node, env, parent }) {
   // uis中记录额外样式信息
   if (node._extraStyle) {
     target.uis._extraStyle = node._extraStyle;
-    // 记录需要额外作为自定义的样式存在的属性
-    const recordCustomStyles = ['pointerEvents'];
-    for (let key of recordCustomStyles) {
-      if (node._extraStyle[key]) {
-        target.styleList = target.styleList.concat({
-          name: key,
-          value: node._extraStyle[key],
+    let list = ['boxShadow']; // 需要记录的样式
+    list.forEach((item) => {
+      if (node._extraStyle[item]) {
+        target.styleList.push({
+          name: item,
+          value: node._extraStyle[item],
         });
       }
+    });
+  }
+}
+
+function processPadding({ node, target }) {
+  // 处理padding (css中设置padding时会影响宽高，但figma中不会)
+  let {
+    paddingLeft = 0,
+    paddingRight = 0,
+    paddingBottom = 0,
+    paddingTop = 0,
+  } = node;
+  let figmaSize = {
+    width: target.props.width,
+    height: target.props.height,
+  };
+  if (paddingLeft + paddingRight < figmaSize.width) {
+    if (node.paddingLeft) {
+      target.props.paddingLeft = node.paddingLeft;
+    }
+    if (node.paddingRight) {
+      target.props.paddingRight = node.paddingRight;
+    }
+  }
+  if (paddingBottom + paddingTop < figmaSize.height) {
+    if (node.paddingBottom) {
+      target.props.paddingBottom = node.paddingBottom;
+    }
+    if (node.paddingTop) {
+      target.props.paddingTop = node.paddingTop;
     }
   }
 }
 
-export { convertBaseProps };
-// module.exports = {
-//     convertBaseProps,
-// };
+export { convertBaseProps, processPadding };

@@ -391,6 +391,13 @@ function genSvgNodeV3({ node, env, parent }) {
   } else {
     target.props.iconType = { name: node.name, url: node.rawSvg || node.svg };
   }
+  // fill样式
+  if (node.fill) {
+    target.styleList.push({
+      name: 'fill',
+      value: node.fill,
+    });
+  }
   return target;
 }
 

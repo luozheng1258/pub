@@ -4,8 +4,12 @@ const fs = require('fs');
 const app = express();
 const port = 8703;
 const child_process = require('child_process');
+const path = require('path');
 
-const startUrlPage = fs.readFileSync('app/walkpage.html', 'utf-8');
+const startUrlPage = fs.readFileSync(
+  path.resolve(__dirname, 'app/walkpage.html'),
+  'utf-8'
+);
 
 app.get('/walkpage', (req, res) => {
   res.send(startUrlPage);
@@ -20,42 +24,57 @@ app.post('/api/walkPage', (req, res) => {
       const walkTarget = fields.url[0];
 
       var result = child_process.spawn('node', [
-        'app/walkTreeApp4.mjs',
+        path.resolve(__dirname, 'app/walkTreeApp4.mjs'),
         walkTarget,
       ]);
       let filePath = '';
+      let debugDetails = [];
       result.on('close', function (code) {
         console.log('child process exited with code :' + code);
         if (code == 0 && filePath) {
-          // const readStream = fs.createReadStream('output/layerTree/result.json');
         } else {
           if (!filePath) {
-            res.send('err');
+            res.send(
+              JSON.stringify({
+                code,
+                detail: 'child process exited',
+                debugDetails,
+              })
+            );
           }
         }
       });
 
       result.stdout.on('data', function (data) {
         console.log('stdout: ' + data);
-        // if (data && (data + "").match(/write compress done:/)) {
-        //   let url = (data + "").slice("write compress done:".length).trim();
+        debugDetails.push(data + '');
         if (data && (data + '').match(/write json done:/)) {
           filePath = (data + '').slice('write json done:'.length).trim();
-
           const readStream = fs.createReadStream(filePath);
           readStream.pipe(res);
-          // // //   fs.createReadStream(url).pipe(res);
-          // // //   getUrlPage = startUrlPage.replace(/\{\{url\}\}/, "" + url);
-          // res.json({ jsonStr: jsonData });
-          //   const readStream = fs.createReadStream('output/layerTree/result.json');
-          //   readStream.pipe(res);
         }
       });
 
       result.stderr.on('data', function (data) {
         console.log('stderr: ' + data);
+        debugDetails.push(data + '');
       });
-      //   res.send("done:" + walkTarget);
+    } else {
+      res.send('先填写爬取的url');
+    }
+  });
+});
+
+app.get('/', (req, res) => {
+  res.send('Hi there!');
+});
+app.post('/', (req, res) => {
+  let form = new multiparty.Form();
+  console.log('done body:', req.body, 'done params:', req.params, 'formdata');
+  form.parse(req, function (err, fields, file) {
+    if (fields && fields.url) {
+      const walkTarget = fields.url[0];
+      res.send('walkTarget:' + walkTarget);
     } else {
       res.send('先填写爬取的url');
     }

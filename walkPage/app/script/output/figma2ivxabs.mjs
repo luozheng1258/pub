@@ -4,91 +4,15 @@ import { genTextNode } from './helpers/text.mjs';
 import { genInputNode } from './helpers/input.mjs';
 import { genRectNode } from './helpers/rect.mjs';
 import { genGroupNode } from './helpers/group.mjs';
-import { genButtonNode } from './helpers/button.mjs';
+import { genButtonNode, genSubmitButtonNode } from './helpers/button.mjs';
+import { isImageNode } from './helpers/utils/index.mjs';
+import { genIframeNode } from './helpers/iframe.mjs';
 
-function genCaseData() {
-  return {
-    case: {
-      id: '',
-      type: 'ih5-case',
-      uis: {
-        name: 'testImport',
-        expand: true,
-        hLines: [],
-        vLines: [],
-        zoom: 40,
-        width: 1920,
-        height: 1200,
-        cover: '0d56ddc1f0cf0205d7bbe06c41bf99b8_10540.svg',
-        deviceName: '大屏4',
-        app_safeArea_topInsetHeight: 0,
-        app_safeArea_bottomInsetHeight: 0,
-      },
-      props: {},
-      binds: {},
-      field: {},
-      children: [],
-      recordDevTime: true,
-    },
-    stage: {
-      id: 'csb8y6grp9pg000bqn0g',
-      type: 'ih5-stage-abs',
-      uis: { name: '前台', expand: true },
-      props: {
-        width: '100%',
-        height: '100%',
-        backgroundColor: '#FFFFFF',
-        hideScrollBar: true,
-        swipeFlipPage: 'none',
-        fonts: {},
-        pageCustomIdList: [null],
-        classStyles: {},
-      },
-      binds: {},
-      field: {},
-      children: [
-        {
-          id: 'csb8y6grp9pg000bqn00',
-          type: 'ih5-system',
-          uis: { name: '应用系统', expand: true, unsuppressible: true },
-          props: {},
-          binds: {},
-          children: [],
-          field: {},
-        },
-        {
-          type: 'ih5-page',
-          id: 'csb9sd5rp9pg000qbh40',
-          uis: { name: '页面1' },
-          props: { width: '100%', height: '100%' },
-          binds: {},
-          field: {},
-          children: [],
-          timeRecord: 1716952244295,
-        },
-      ],
-      record: {},
-      serverMap: {},
-      customWidgetList: {},
-    },
-    server: {
-      id: 'csb8y6grp9pg000bqn10',
-      type: 'data-server',
-      uis: { name: '后台', expand: true },
-      props: { name: '后台', v2: 1 },
-      binds: {},
-      field: {},
-      children: [],
-      record: {},
-      sockets: [],
-      lives: [],
-    },
-  };
-}
 // abs positon version
 class Figma2IvxAbs {
   constructor(props) {
     this.figmaNodes = props.figmaNodes || [];
+    this.windowBoundInfo = props.windowBoundInfo;
     this.ivxNodes = [];
 
     this.exec = this.exec.bind(this);
@@ -98,44 +22,38 @@ class Figma2IvxAbs {
   exec({ env }) {
     const { figmaNodes, ivxNodes } = this;
     let ivxFigmaData = {};
-    let caseData = genCaseData();
+    let caseData = genCaseData({
+      windowBoundInfo: this.windowBoundInfo,
+    });
     let pageContainer = caseData.stage.children[1];
     figmaNodes.forEach((node) => {
-      // console.log('debug selected pluginData', node, node.fills)
-      if (node.type === 'FRAME' || node.type === 'GROUP') {
-        this.removeEmptyChild({ node });
-        ivxFigmaData = this.genIvxData(node, env || 'rel');
-        if (node.isFixed) {
-          let fixedWrap = {
-            type: 'ih5-abs-banner',
-            props: {
-              width: 0,
-              height: 0,
-            },
-            uis: {
-              name: node.name,
-            },
-            children: [ivxFigmaData],
-            envs: ['abs'],
-          };
-          if (node.zIndex) {
-            // 给横幅添加层级
-            fixedWrap.props.zIndex = node.zIndex;
+      switch (node.type) {
+        case 'FRAME':
+        case 'GROUP':
+          {
+            this.removeEmptyChild({ node });
+            ivxFigmaData = this.genIvxData(node, env || 'rel');
+            if (node.isFixed) {
+              this.addBannerWrap({ node, ivxFigmaData, ivxNodes });
+            } else {
+              if (ivxFigmaData) {
+                this.walkIvxNode(ivxFigmaData);
+                ivxNodes.push(ivxFigmaData);
+              }
+            }
           }
-          if (ivxFigmaData) {
-            this.walkIvxNode(fixedWrap);
-            ivxNodes.push(fixedWrap);
+          break;
+        case 'BODY':
+          {
+            const { backgroundColor } = node._extraStyle || {};
+            pageContainer.props.bgColor = backgroundColor;
           }
-        } else {
-          if (ivxFigmaData) {
-            this.walkIvxNode(ivxFigmaData);
-            ivxNodes.push(ivxFigmaData);
-          }
-        }
+          break;
       }
     });
     pageContainer.children = ivxNodes;
     this.addFontFamilyToPage({ pageNode: pageContainer });
+    this.delUselessPointerEvents({ nodes: ivxNodes });
     return caseData;
   }
 
@@ -154,7 +72,7 @@ class Figma2IvxAbs {
       if (node.isSVG) {
         objData = genSvgNodeV3({ node, env, parent });
         skip = true;
-      } else if (this.checkIsButton(node)) {
+      } else if (this.checkIsButton({ node, pNode: parent })) {
         objData = genButtonNode({ node, env, parent });
         skip = true;
       } else {
@@ -174,7 +92,12 @@ class Figma2IvxAbs {
             objData = genTextNode({ node, env, parent });
             break;
           case 'INPUT':
-            objData = genInputNode({ node, env, parent });
+            if (node.inputType === 'submit') {
+              objData = genSubmitButtonNode({ node, env, parent });
+            } else {
+              objData = genInputNode({ node, env, parent });
+            }
+
             break;
           case 'GROUP':
             objData = genGroupNode({ node, env, parent });
@@ -182,6 +105,9 @@ class Figma2IvxAbs {
           case 'RECTANGLE':
           case 'ELLIPSE':
             objData = genRectNode({ node, env, parent });
+            break;
+          case 'IFRAME':
+            objData = genIframeNode({ node, env, parent });
             break;
           default:
             break;
@@ -255,7 +181,8 @@ class Figma2IvxAbs {
       if (
         node.strokeWeight == 0 &&
         node.type != 'INPUT' &&
-        node.type != 'TEXT'
+        node.type != 'TEXT' &&
+        node.type != 'IFRAME'
       ) {
         if (node.backgroundStyles) {
           return false;
@@ -299,6 +226,9 @@ class Figma2IvxAbs {
       default:
         break;
     }
+
+    // 处理display:contents的情况
+    this.processDisplayContents({ node });
   };
   mergeExtraStyle = ({ source, target }) => {
     const {
@@ -308,6 +238,7 @@ class Figma2IvxAbs {
       paddingRight,
       paddingBottom,
       paddingLeft,
+      pointerEvents,
     } = source || {};
     return target
       ? {
@@ -318,8 +249,46 @@ class Figma2IvxAbs {
           paddingRight,
           paddingBottom,
           paddingLeft,
+          pointerEvents,
         }
       : target;
+  };
+  // 处理display:contents的情况：将内部的子节点提升到父节点的层级
+  processDisplayContents = ({ node }) => {
+    let { children } = node || {};
+    // 处理children中display:contents的情况
+    let newChildren = [];
+    let hasDisplayContents = false;
+
+    let getDisplayContentsNodeChildren = ({ node }) => {
+      let { children, _extraStyle } = node || {};
+      if (_extraStyle?.display === 'contents') {
+        // 剔除其中的windowButtonW属性，因为在父节点display:contents的情况下，子节点始终计算结果都是100%
+        children.forEach((child) => {
+          let { uis } = child || {};
+          if (uis?.windowButtonW) {
+            delete uis.windowButtonW;
+          }
+        });
+        return children.reduce((prev, cur, index) => {
+          return prev.concat(getDisplayContentsNodeChildren({ node: cur }));
+        }, []);
+      }
+      return [node];
+    };
+
+    for (let i = 0, l = children.length; i < l; i++) {
+      let childNode = children[i];
+      if (childNode._extraStyle?.display === 'contents') {
+        newChildren.push(
+          ...getDisplayContentsNodeChildren({ node: childNode })
+        );
+        hasDisplayContents = true;
+      } else {
+        newChildren.push(childNode);
+      }
+    }
+    if (hasDisplayContents) node.children = newChildren;
   };
 
   checkCanMerge = ({ node, pNode }) => {
@@ -327,7 +296,7 @@ class Figma2IvxAbs {
     let canMergeChild = null;
     let canReplaceChild = null;
     if (
-      this.checkIsButton(node) ||
+      this.checkIsButton({ node, pNode }) ||
       this.checkIsImage(node) ||
       node.isSVG ||
       node.visible === false ||
@@ -367,7 +336,7 @@ class Figma2IvxAbs {
 
     if (canReplaceChild) {
       // merge之后形成按钮结构的，就不再进行replace
-      if (this.checkIsButton(node)) return;
+      if (this.checkIsButton({ node, pNode })) return;
       // 如果合并后的节点没有溢出且当前节点没有剪切，就替换
       if (isRectOverFlow(node, canReplaceChild) || node.clipsContent) return;
       // 如果父节点有多个子节点，且子节点宽高和替换节点不一样，就不替换
@@ -375,15 +344,15 @@ class Figma2IvxAbs {
         let { width, height } = node;
         let { width: rw, height: rh } = canReplaceChild;
         if (
-          !this.isEqualXYWH({ source: width, target: rw }) ||
-          !this.isEqualXYWH({ source: height, target: rh })
+          !this.isEqualXYWH({ source: width, target: rw, gap: 0.5 }) ||
+          !this.isEqualXYWH({ source: height, target: rh, gap: 0.5 })
         ) {
           return;
         }
       }
 
       for (let key in canReplaceChild) {
-        if (!['parent', 'isInline'].includes(key)) {
+        if (!['parent', 'isInline', 'zIndex'].includes(key)) {
           if (key === '_extraStyle') {
             canReplaceChild[key] = this.mergeExtraStyle({
               source: node[key],
@@ -406,7 +375,7 @@ class Figma2IvxAbs {
         }
         // 如果子节点是按钮，图片，svg，就不合并，使用节点替换
         if (
-          this.checkIsButton(childNode) ||
+          this.checkIsButton({ node: childNode }) ||
           this.checkIsImage(childNode) ||
           this.checkIsGridWrap({ node: childNode }) ||
           childNode.isSVG
@@ -416,7 +385,8 @@ class Figma2IvxAbs {
         }
 
         // 如果节点存在gap属性，就不合并
-        if (node?._extraStyle?.gap) {
+        let { gap } = node?._extraStyle || {};
+        if (gap) {
           return false;
         }
 
@@ -513,9 +483,9 @@ class Figma2IvxAbs {
     }
     return gridLayout;
   };
-  isEqualXYWH = ({ source, target }) => {
+  isEqualXYWH = ({ source, target, gap = 2 }) => {
     let detla = Math.abs(source - target);
-    return detla < 2;
+    return detla <= gap;
   };
   checkTextChild = ({ node }) => {
     if (node.children.length > 0) {
@@ -530,7 +500,9 @@ class Figma2IvxAbs {
             node.children[index].isInline &&
             (!node.children[index].fills ||
               node.children[index].fills.length == 0) &&
-            !node.children[index].backgroundStyles
+            !node.children[index].backgroundStyles &&
+            (!node.children[index].effects ||
+              node.children[index].effects.length == 0)
           ) {
             let notAllText = 0;
             node.children[index].children?.forEach((childNode) => {
@@ -662,7 +634,24 @@ class Figma2IvxAbs {
       }
     }
   };
-  checkIsButton = (node) => {
+  checkIsButton = ({ node, pNode }) => {
+    let hasBorder = ({ node }) => {
+      return (
+        node.strokes &&
+        node.strokes.length > 0 &&
+        Object.keys(node.individualStrokes || {}).length == 4
+      );
+    };
+    let hasBg = ({ node }) => {
+      return (
+        node.backgroundStyles ||
+        (Array.isArray(node.fills) &&
+          node.fills.filter((fill) => {
+            return fill.opacity != 0;
+          }).length > 0 &&
+          !node.isSVG)
+      );
+    };
     switch (node.type) {
       case 'INSTANCE':
       case 'FRAME':
@@ -670,19 +659,9 @@ class Figma2IvxAbs {
       case 'COMPONENT':
         let isButton = false;
         if (
-          // 有边框
-          // (node.strokes && node.strokes.length > 0 && !node.individualStrokeWeights) ||
-          (node.strokes && node.strokes.length > 0) ||
-          // 有圆角
-          node.rectangleCornerRadii ||
-          node.cornerRadius ||
-          // 有背景填充
-          node.backgroundStyles ||
-          (Array.isArray(node.fills) &&
-            node.fills.filter((fill) => {
-              return fill.type != 'SOLID' || fill.alpha != 0;
-            }).length > 0 &&
-            !node.isSVG)
+          hasBorder({ node }) || // 4边有边框
+          hasBg({ node }) // 有背景填充
+          // node.cornerRadius || // 有圆角的，需要有边框或背景填充
         ) {
           if (node.children?.length > 2) {
             return false;
@@ -690,20 +669,25 @@ class Figma2IvxAbs {
           let hasText = 0,
             hasIcon = 0,
             hasOther = 0;
+          let child;
           node.children?.forEach((childNode) => {
             if (childNode.isSVG) {
               hasIcon += 1;
+              child = childNode;
             } else if (childNode.type === 'TEXT') {
               hasText += 1;
+              child = childNode;
             } else {
               hasOther += 1;
             }
           });
           if (hasText === 1 && hasIcon <= 0 && hasOther === 0) {
-            isButton = true;
+            // 文本按钮, 文本需要居中
+            isButton = this.isCenterChild({ node: child, pNode: node });
           }
           if (hasText === 0 && hasIcon == 1 && hasOther === 0) {
-            isButton = true;
+            // 图标按钮，图标需要居中
+            isButton = this.isCenterChild({ node: child, pNode: node });
           }
         }
         return isButton;
@@ -711,6 +695,19 @@ class Figma2IvxAbs {
         return false;
     }
   };
+  isCenterChild = ({ node, pNode }) => {
+    let { x, y, width, height } = node || {};
+    let { x: px, y: py, width: pw, height: ph } = pNode || {};
+    let deltaLeft = Math.abs(x - px);
+    let deltaRight = Math.abs(pw - deltaLeft - width);
+    let deltaTop = Math.abs(y - py);
+    let deltaBottom = Math.abs(ph - deltaTop - height);
+    return !(
+      Math.abs(deltaTop - deltaBottom) > 5 ||
+      Math.abs(deltaLeft - deltaRight) > 5
+    );
+  };
+
   checkIsImage = (node) => {
     switch (node.type) {
       case 'INSTANCE':
@@ -719,24 +716,7 @@ class Figma2IvxAbs {
       case 'COMPONENT':
       case 'RECTANGLE':
       case 'ELLIPSE':
-        const { fills } = node;
-        let isImage = false;
-        if (Array.isArray(fills) && fills.length > 0) {
-          for (const paint of fills) {
-            if (
-              paint.type === 'IMAGE' &&
-              (paint.visible || !paint.hasOwnProperty('visible')) &&
-              paint.opacity !== 0
-            ) {
-              isImage = true;
-            }
-          }
-        }
-        // if (isImage && node.children?.length == 0) {
-        if (isImage) {
-          return true;
-        }
-        break;
+        return isImageNode({ node });
       default:
         break;
     }
@@ -791,6 +771,211 @@ class Figma2IvxAbs {
       name: 'fontFamily',
       value: fontFamily,
     });
+  };
+  // 递归遍历删除无效的pointerEvents
+  delUselessPointerEvents = ({ nodes }) => {
+    if (!Array.isArray(nodes)) return;
+    let walkNode = ({ ctx = {}, node }) => {
+      let { customPointerEvents, bgClip } = ctx;
+      let {
+        children,
+        uis: { _extraStyle = {} },
+      } = node || {};
+      let { pointerEvents, position } = _extraStyle || {};
+      // 如果祖先节点设置了pointerEvents
+      if (customPointerEvents) {
+        if (pointerEvents === customPointerEvents) {
+          delete _extraStyle.pointerEvents;
+        } else if (pointerEvents) {
+          ctx.customPointerEvents = pointerEvents;
+          node.styleList = node.styleList || [];
+          node.styleList.push({
+            name: 'pointerEvents',
+            value: pointerEvents,
+          });
+        }
+      } else {
+        if (pointerEvents === 'auto') {
+          delete _extraStyle.pointerEvents;
+        } else if (pointerEvents) {
+          ctx.customPointerEvents = pointerEvents;
+          node.styleList = node.styleList || [];
+          node.styleList.push({
+            name: 'pointerEvents',
+            value: pointerEvents,
+          });
+        }
+      }
+
+      // 如果祖先节点设置了backgroundClip
+      if (bgClip) {
+        if (bgClip === 'text' && position === 'static') {
+          node.styleList.push({
+            name: 'position',
+            value: 'static',
+          });
+        }
+      } else {
+        if (_extraStyle.backgroundClip === 'text') {
+          ctx.bgClip = _extraStyle.backgroundClip;
+        }
+      }
+
+      if (!Array.isArray(children)) return;
+      children.forEach((child) => {
+        walkNode({
+          ctx: {
+            customPointerEvents: ctx.customPointerEvents,
+            bgClip: ctx.bgClip,
+          },
+          node: child,
+        });
+      });
+    };
+    nodes.forEach((node) => walkNode({ node }));
+  };
+  // 添加固定横幅
+  addBannerWrap = ({ node, ivxFigmaData, ivxNodes }) => {
+    const { name, zIndex } = node || {};
+    let fixedWrap = {
+      type: 'ih5-abs-banner',
+      props: {
+        width: 0,
+        height: 0,
+      },
+      uis: { name },
+      children: [ivxFigmaData],
+      envs: ['abs'],
+      styleList: [{ name: 'position', value: 'fixed' }],
+    };
+    if (zIndex) {
+      // 给横幅添加层级
+      fixedWrap.props.zIndex = zIndex;
+    }
+    this.getBannerLayout({ ivxFigmaData, fixedWrap });
+    if (ivxFigmaData) {
+      this.walkIvxNode(fixedWrap);
+      ivxNodes.push(fixedWrap);
+    }
+  };
+  // 获取横幅布局
+  getBannerLayout = ({ ivxFigmaData, fixedWrap }) => {
+    let { windowBoundW, windowBoundH } = this.windowBoundInfo || {};
+    if (!windowBoundH || !windowBoundW) return;
+    let centerPos = { x: windowBoundW / 2, y: windowBoundH / 2 };
+    let { props } = ivxFigmaData || {};
+    let { x, y } = props || {};
+    let { props: fixedWrapProps } = fixedWrap || {};
+    if (x < centerPos.x) {
+      if (y < centerPos.y) {
+        // 左上
+        fixedWrapProps.layout = 'topLeft';
+        fixedWrapProps.y = y;
+      } else {
+        // 左下
+        fixedWrapProps.layout = 'bottomLeft';
+        fixedWrapProps.y = y - windowBoundH;
+      }
+      fixedWrapProps.x = x;
+    } else {
+      if (y < centerPos.y) {
+        // 右上
+        fixedWrapProps.layout = 'topRight';
+        fixedWrapProps.y = y;
+      } else {
+        // 右下
+        fixedWrapProps.layout = 'bottomRight';
+        fixedWrapProps.y = y - windowBoundH;
+      }
+      fixedWrapProps.x = x - windowBoundW; // 负数
+    }
+    props.x = 0;
+    props.y = 0;
+  };
+}
+// 生成案例数据
+function genCaseData({ windowBoundInfo }) {
+  let { windowBoundH } = windowBoundInfo || {};
+  return {
+    case: {
+      id: '',
+      type: 'ih5-case',
+      uis: {
+        name: 'testImport',
+        expand: true,
+        hLines: [],
+        vLines: [],
+        zoom: 40,
+        width: 1920,
+        height: windowBoundH,
+        cover: '0d56ddc1f0cf0205d7bbe06c41bf99b8_10540.svg',
+        deviceName: 'custom',
+        app_safeArea_topInsetHeight: 0,
+        app_safeArea_bottomInsetHeight: 0,
+      },
+      props: {},
+      binds: {},
+      field: {},
+      children: [],
+      recordDevTime: true,
+    },
+    stage: {
+      id: 'csb8y6grp9pg000bqn0g',
+      type: 'ih5-stage-abs',
+      uis: { name: '前台', expand: true },
+      props: {
+        width: '100%',
+        height: '100%',
+        backgroundColor: '#FFFFFF',
+        hideScrollBar: true,
+        cut: 'hidden', // 前台使用隐藏，页面使用scrollY
+        swipeFlipPage: 'none',
+        fonts: {},
+        pageCustomIdList: [null],
+        classStyles: {},
+      },
+      binds: {},
+      field: {},
+      children: [
+        {
+          id: 'csb8y6grp9pg000bqn00',
+          type: 'ih5-system',
+          uis: { name: '应用系统', expand: true, unsuppressible: true },
+          props: {},
+          binds: {},
+          children: [],
+          field: {},
+        },
+        {
+          type: 'ih5-page',
+          id: 'csb9sd5rp9pg000qbh40',
+          uis: {
+            name: '页面1',
+            windowBoundInfo,
+          },
+          props: { width: '100%', height: '100%', bgColor: '', cut: 'scrollY' },
+          binds: {},
+          field: {},
+          children: [],
+          timeRecord: 1716952244295,
+        },
+      ],
+      record: {},
+      serverMap: {},
+      customWidgetList: {},
+    },
+    server: {
+      id: 'csb8y6grp9pg000bqn10',
+      type: 'data-server',
+      uis: { name: '后台', expand: true },
+      props: { name: '后台', v2: 1 },
+      binds: {},
+      field: {},
+      children: [],
+      record: {},
+      sockets: [],
+      lives: [],
+    },
   };
 }
 export default Figma2IvxAbs;

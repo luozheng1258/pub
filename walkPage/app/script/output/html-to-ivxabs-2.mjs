@@ -12,9 +12,10 @@ function walkPage(paramArg) {
 
     function getBoundingClientRect(el) {
       let rect = el.getBoundingClientRect();
+      // Shadow DOM节点无法获取矩形信息，需要处理为空的情况
+      if (!rect) return {};
       rect.y = rect.y - bodyDeltaY;
       rect.top = rect.top - bodyDeltaY;
-
       return rect;
     }
     if (time) {
@@ -85,99 +86,12 @@ function walkPage(paramArg) {
       return pick(styles, list);
     }
 
-    function size(obj) {
-      // return Object.keys(obj).length;
-      // 保留所有层div等容器，不再根据默认样式进行过滤
-      return true;
-    }
     const layers = [];
 
-    const ivxLayers = [];
     const el =
       selector instanceof HTMLElement
         ? selector
         : document.querySelector(selector || 'body');
-
-    function textNodesUnder(el) {
-      let n = null;
-      const a = [];
-      const walk = document.createTreeWalker(
-        el,
-        NodeFilter.SHOW_TEXT,
-        null,
-        false
-      );
-      while ((n = walk.nextNode())) {
-        a.push(n);
-      }
-      return a;
-    }
-    const getUrl = (url) => {
-      if (!url) {
-        return '';
-      }
-      let final = url.trim();
-      if (final.startsWith('//')) {
-        final = 'https:' + final;
-      }
-      if (final.startsWith('/')) {
-        final = 'https://' + location.host + final;
-      }
-      return final;
-    };
-    const parseUnits = (str) => {
-      if (!str) {
-        return null;
-      }
-      const match = str.match(/([\d\.]+)px/);
-      const val = match && match[1];
-      if (val) {
-        return {
-          unit: 'PIXELS',
-          value: parseFloat(val),
-        };
-      }
-      return null;
-    };
-
-    function isHidden(element) {
-      let el = element;
-      let elType = el.tagName;
-      let computedElStyle = getComputedStyle(el);
-      let bgCOlor = computedElStyle.backgroundColor;
-      let borderWidth = computedElStyle.borderWidth;
-      // 检查元素自身，如果是透明的div而且不需要记录绑定事件的,那就不用将其记录
-      // if (el.dataset.events) {
-      //   return false;
-      // }
-      // if (
-      //   elType === "DIV" &&
-      //   bgCOlor === "rgba(0, 0, 0, 0)" &&
-      //   borderWidth === "0px"
-      // ) {
-      //   return true;
-      // }
-      ///////////////////////////////////////////////////////////////////
-      do {
-        const computed = getComputedStyle(el);
-        if (
-          // open opacity for hidden check
-          computed.opacity == '0' ||
-          computed.display === 'none' ||
-          computed.visibility === 'hidden'
-        ) {
-          return true;
-        }
-        // Some sites hide things by having overflow: hidden and height: 0, e.g. dropdown menus that animate height in
-        if (
-          computed.overflow !== 'visible' &&
-          el.getBoundingClientRect().height < 1
-        ) {
-          return true;
-        }
-      } while ((el = el.parentElement));
-      return false;
-    }
 
     if (el) {
       // Process SVG <use> elements
@@ -192,18 +106,7 @@ function walkPage(paramArg) {
           console.warn('Error querying <use> tag href', err);
         }
       }
-      const getShadowEls = (el) => {
-        var _a;
-        return Array.from(
-          ((_a = el.shadowRoot) === null || _a === void 0
-            ? void 0
-            : _a.querySelectorAll('*')) || []
-        ).reduce((memo, el) => {
-          memo.push(el);
-          memo.push(...getShadowEls(el));
-          return memo;
-        }, []);
-      };
+      // 获取el下的所有shadow dom元素
       const els = Array.from(el.querySelectorAll('*')).reduce((memo, el) => {
         memo.push(el);
         memo.push(...getShadowEls(el));
@@ -211,596 +114,346 @@ function walkPage(paramArg) {
       }, []);
 
       if (els) {
+        // 待处理的元素
+        let todoList = [];
         Array.from(els).forEach((el) => {
           if (el instanceof SVGSVGElement) {
-            const rect = getBoundingClientRect(el);
-
-            // rect.top = rect.top - bodyDeltaY
-
-            // TODO: pull in CSS/computed styles
-            // TODO: may need to pull in layer styles too like shadow, bg color, etc
-            layers.push({
-              type: 'SVG',
-              ref: el,
-              svg: el.outerHTML,
-              isSVG: true,
-              isRawSVG: true,
-              x: parseFloat(rect.left),
-              y: parseFloat(rect.top),
-              width: parseFloat(rect.width),
-              height: parseFloat(rect.height),
-            });
-
-            // todo ivxLayers
+            handleSvgNode({ el, layers, getBoundingClientRect });
             return;
           } else if (el instanceof SVGElement) {
             // Sub SVG Eleemnt
             return;
           }
-
+          // 对于父元素为Picture的元素，不进行处理
           if (
             el.parentElement &&
             el.parentElement instanceof HTMLPictureElement
           ) {
-            return;
+            let i = todoList.indexOf(el);
+            if (i > -1) {
+              todoList.splice(i, 1);
+            } else {
+              return;
+            }
           }
           const appliedStyles = getAppliedComputedStyles(el);
           const computedStyle = getComputedStyle(el);
-          if (
-            size(appliedStyles) ||
-            el instanceof HTMLImageElement ||
-            el instanceof HTMLPictureElement ||
-            el instanceof HTMLVideoElement
-          ) {
-            const rect = getBoundingClientRect(el);
-            if (rect.width >= 0 && rect.height >= 0) {
-              const fills = [];
-              const color = getRgb(computedStyle.backgroundColor);
-              if (color) {
+          const rect = getBoundingClientRect(el);
+
+          if (rect.width >= 0 && rect.height >= 0) {
+            const fills = [];
+            // 背景颜色
+            const color = getRgb(computedStyle.backgroundColor);
+            if (color) {
+              fills.push({
+                type: 'SOLID',
+                color: {
+                  r: color.r,
+                  g: color.g,
+                  b: color.b,
+                },
+                opacity: color.a || 1,
+              });
+            }
+            const rectNode = {
+              type: 'RECTANGLE',
+              ref: el,
+              x: parseFloat(rect.left),
+              y: parseFloat(rect.top),
+              width: parseFloat(rect.width),
+              height: parseFloat(rect.height),
+              fills: fills,
+            };
+
+            if (includeMetadata) {
+              rectNode.meta = { originalStyles: appliedStyles };
+            }
+            // 透明度
+            if (computedStyle.opacity && computedStyle.opacity !== '1') {
+              rectNode.opacity = parseFloat(computedStyle.opacity);
+            }
+
+            // 边框改为四边分开记录
+            if (computedStyle.borderTop) {
+              const parsed = computedStyle.borderTop.match(
+                /^([\d\.]+)px\s*(\w+)\s*(.*)$/
+              );
+              if (parsed) {
+                let [_match, width, type, color] = parsed;
+                if (width && width !== '0' && type !== 'none' && color) {
+                  const rgb = getRgb(color);
+                  if (rgb) {
+                    rectNode.strokes = [
+                      {
+                        type: 'SOLID',
+                        color: { r: rgb.r, b: rgb.b, g: rgb.g },
+                        opacity: rgb.a || 1,
+                      },
+                    ];
+                    rectNode.strokeWeight = 'figma.mixed';
+                    if (!rectNode.individualStrokes) {
+                      rectNode.individualStrokes = {};
+                    }
+                    rectNode.individualStrokes.top = {
+                      type: 'SOLID',
+                      color: { r: rgb.r, b: rgb.b, g: rgb.g },
+                      opacity: rgb.a || 1,
+                    };
+                    rectNode.strokeTopWeight = parseFloat(parseFloat(width));
+                  }
+                }
+              }
+            }
+            if (computedStyle.borderRight) {
+              const parsed = computedStyle.borderRight.match(
+                /^([\d\.]+)px\s*(\w+)\s*(.*)$/
+              );
+              if (parsed) {
+                let [_match, width, type, color] = parsed;
+                if (width && width !== '0' && type !== 'none' && color) {
+                  const rgb = getRgb(color);
+                  if (rgb) {
+                    rectNode.strokes = [
+                      {
+                        type: 'SOLID',
+                        color: { r: rgb.r, b: rgb.b, g: rgb.g },
+                        opacity: rgb.a || 1,
+                      },
+                    ];
+                    rectNode.strokeWeight = 'figma.mixed';
+                    if (!rectNode.individualStrokes) {
+                      rectNode.individualStrokes = {};
+                    }
+
+                    rectNode.individualStrokes.right = {
+                      type: 'SOLID',
+                      color: { r: rgb.r, b: rgb.b, g: rgb.g },
+                      opacity: rgb.a || 1,
+                    };
+                    rectNode.strokeRightWeight = parseFloat(parseFloat(width));
+                  }
+                }
+              }
+            }
+            if (computedStyle.borderBottom) {
+              const parsed = computedStyle.borderBottom.match(
+                /^([\d\.]+)px\s*(\w+)\s*(.*)$/
+              );
+              if (parsed) {
+                let [_match, width, type, color] = parsed;
+                if (width && width !== '0' && type !== 'none' && color) {
+                  const rgb = getRgb(color);
+                  if (rgb) {
+                    rectNode.strokes = [
+                      {
+                        type: 'SOLID',
+                        color: { r: rgb.r, b: rgb.b, g: rgb.g },
+                        opacity: rgb.a || 1,
+                      },
+                    ];
+                    rectNode.strokeWeight = 'figma.mixed';
+                    if (!rectNode.individualStrokes) {
+                      rectNode.individualStrokes = {};
+                    }
+                    rectNode.individualStrokes.bottom = {
+                      type: 'SOLID',
+                      color: { r: rgb.r, b: rgb.b, g: rgb.g },
+                      opacity: rgb.a || 1,
+                    };
+                    rectNode.strokeBottomWeight = parseFloat(parseFloat(width));
+                  }
+                }
+              }
+            }
+            if (computedStyle.borderLeft) {
+              const parsed = computedStyle.borderLeft.match(
+                /^([\d\.]+)px\s*(\w+)\s*(.*)$/
+              );
+              if (parsed) {
+                let [_match, width, type, color] = parsed;
+                if (width && width !== '0' && type !== 'none' && color) {
+                  const rgb = getRgb(color);
+                  if (rgb) {
+                    rectNode.strokes = [
+                      {
+                        type: 'SOLID',
+                        color: { r: rgb.r, b: rgb.b, g: rgb.g },
+                        opacity: rgb.a || 1,
+                      },
+                    ];
+                    rectNode.strokeWeight = 'figma.mixed';
+                    if (!rectNode.individualStrokes) {
+                      rectNode.individualStrokes = {};
+                    }
+
+                    rectNode.individualStrokes.left = {
+                      type: 'SOLID',
+                      color: { r: rgb.r, b: rgb.b, g: rgb.g },
+                      opacity: rgb.a || 1,
+                    };
+                    rectNode.strokeLeftWeight = parseFloat(parseFloat(width));
+                  }
+                }
+              }
+            }
+            if (!rectNode.strokes) {
+              rectNode.strokes = [];
+              rectNode.strokeWeight = 0;
+            }
+
+            if (computedStyle?.backgroundImage !== 'none') {
+              handleComputedStyle.processBackgroundImage({
+                rectNode,
+                computedStyle,
+              });
+            } else if (computedStyle?.content !== 'normal') {
+              handleComputedStyle.processContent({
+                content: computedStyle.content,
+                fills,
+              });
+            }
+
+            if (el instanceof HTMLImageElement) {
+              handleImageNode({ el, computedStyle, rectNode });
+            } else if (el instanceof HTMLPictureElement) {
+              handlePictureNode({ el, fills, todoList, computedStyle });
+            } else if (el instanceof HTMLVideoElement) {
+              const url = el.poster;
+              if (url) {
                 fills.push({
-                  type: 'SOLID',
-                  color: {
-                    r: color.r,
-                    g: color.g,
-                    b: color.b,
-                  },
-                  opacity: color.a || 1,
+                  url,
+                  type: 'IMAGE',
+                  // TODO: object fit, position
+                  scaleMode:
+                    computedStyle.objectFit === 'contain' ? 'FIT' : 'FILL',
+                  imageHash: null,
+                  isVideo: true,
                 });
               }
-              const rectNode = {
-                type: 'RECTANGLE',
-                tagName: el.tagName,
-                nodeId: el.id,
-                ref: el,
-                x: parseFloat(rect.left),
-                y: parseFloat(rect.top),
-                width: parseFloat(rect.width),
-                height: parseFloat(rect.height),
-                fills: fills,
-              };
-
-              if (includeMetadata) {
-                rectNode.meta = { originalStyles: appliedStyles };
-              }
-
-              // 边框改为四边分开记录
-              if (computedStyle.borderTop) {
-                const parsed = computedStyle.borderTop.match(
-                  /^([\d\.]+)px\s*(\w+)\s*(.*)$/
-                );
-                if (parsed) {
-                  let [_match, width, type, color] = parsed;
-                  if (width && width !== '0' && type !== 'none' && color) {
-                    const rgb = getRgb(color);
-                    if (rgb) {
-                      rectNode.strokes = [
-                        {
-                          type: 'SOLID',
-                          color: { r: rgb.r, b: rgb.b, g: rgb.g },
-                          opacity: rgb.a || 1,
-                        },
-                      ];
-                      rectNode.strokeWeight = 'figma.mixed';
-                      if (!rectNode.individualStrokes) {
-                        rectNode.individualStrokes = {};
-                      }
-                      rectNode.individualStrokes.top = {
-                        type: 'SOLID',
-                        color: { r: rgb.r, b: rgb.b, g: rgb.g },
-                        opacity: rgb.a || 1,
-                      };
-                      rectNode.strokeTopWeight = parseFloat(parseFloat(width));
-                    }
-                  }
-                }
-              }
-              if (computedStyle.borderRight) {
-                const parsed = computedStyle.borderRight.match(
-                  /^([\d\.]+)px\s*(\w+)\s*(.*)$/
-                );
-                if (parsed) {
-                  let [_match, width, type, color] = parsed;
-                  if (width && width !== '0' && type !== 'none' && color) {
-                    const rgb = getRgb(color);
-                    if (rgb) {
-                      rectNode.strokes = [
-                        {
-                          type: 'SOLID',
-                          color: { r: rgb.r, b: rgb.b, g: rgb.g },
-                          opacity: rgb.a || 1,
-                        },
-                      ];
-                      rectNode.strokeWeight = 'figma.mixed';
-                      if (!rectNode.individualStrokes) {
-                        rectNode.individualStrokes = {};
-                      }
-
-                      rectNode.individualStrokes.right = {
-                        type: 'SOLID',
-                        color: { r: rgb.r, b: rgb.b, g: rgb.g },
-                        opacity: rgb.a || 1,
-                      };
-                      rectNode.strokeRightWeight = parseFloat(
-                        parseFloat(width)
-                      );
-                    }
-                  }
-                }
-              }
-              if (computedStyle.borderBottom) {
-                const parsed = computedStyle.borderBottom.match(
-                  /^([\d\.]+)px\s*(\w+)\s*(.*)$/
-                );
-                if (parsed) {
-                  let [_match, width, type, color] = parsed;
-                  if (width && width !== '0' && type !== 'none' && color) {
-                    const rgb = getRgb(color);
-                    if (rgb) {
-                      rectNode.strokes = [
-                        {
-                          type: 'SOLID',
-                          color: { r: rgb.r, b: rgb.b, g: rgb.g },
-                          opacity: rgb.a || 1,
-                        },
-                      ];
-                      rectNode.strokeWeight = 'figma.mixed';
-                      if (!rectNode.individualStrokes) {
-                        rectNode.individualStrokes = {};
-                      }
-                      rectNode.individualStrokes.bottom = {
-                        type: 'SOLID',
-                        color: { r: rgb.r, b: rgb.b, g: rgb.g },
-                        opacity: rgb.a || 1,
-                      };
-                      rectNode.strokeBottomWeight = parseFloat(
-                        parseFloat(width)
-                      );
-                    }
-                  }
-                }
-              }
-              if (computedStyle.borderLeft) {
-                const parsed = computedStyle.borderLeft.match(
-                  /^([\d\.]+)px\s*(\w+)\s*(.*)$/
-                );
-                if (parsed) {
-                  let [_match, width, type, color] = parsed;
-                  if (width && width !== '0' && type !== 'none' && color) {
-                    const rgb = getRgb(color);
-                    if (rgb) {
-                      rectNode.strokes = [
-                        {
-                          type: 'SOLID',
-                          color: { r: rgb.r, b: rgb.b, g: rgb.g },
-                          opacity: rgb.a || 1,
-                        },
-                      ];
-                      rectNode.strokeWeight = 'figma.mixed';
-                      if (!rectNode.individualStrokes) {
-                        rectNode.individualStrokes = {};
-                      }
-
-                      rectNode.individualStrokes.left = {
-                        type: 'SOLID',
-                        color: { r: rgb.r, b: rgb.b, g: rgb.g },
-                        opacity: rgb.a || 1,
-                      };
-                      rectNode.strokeLeftWeight = parseFloat(parseFloat(width));
-                    }
-                  }
-                }
-              }
-              if (!rectNode.strokes) {
-                rectNode.strokes = [];
-                rectNode.strokeWeight = 0;
-              }
-
-              if (
-                computedStyle.backgroundImage &&
-                computedStyle.backgroundImage !== 'none'
-              ) {
-                const urlMatch = computedStyle.backgroundImage.match(
-                  /url\(['"]?(.*?)['"]?\)/
-                );
-                const url = urlMatch && urlMatch[1];
-                if (url) {
-                  fills.push({
-                    url,
-                    type: 'IMAGE',
-                    // TODO: backround size, position
-                    scaleMode:
-                      computedStyle.backgroundSize === 'contain'
-                        ? 'FIT'
-                        : 'FILL',
-                    imageHash: null,
-                  });
-                  rectNode.backgroundStyles = [];
-                  if (
-                    computedStyle.backgroundPosition &&
-                    computedStyle.backgroundPosition !== '50% 50%'
-                  ) {
-                    rectNode.backgroundStyles.push({
-                      name: 'backgroundPosition',
-                      value: computedStyle.backgroundPosition,
-                    });
-                  }
-                  if (
-                    computedStyle.backgroundSize &&
-                    computedStyle.backgroundSize !== 'cover'
-                  ) {
-                    rectNode.backgroundStyles.push({
-                      name: 'backgroundSize',
-                      value: computedStyle.backgroundSize,
-                    });
-                  }
-                  if (
-                    computedStyle.backgroundOrigin &&
-                    computedStyle.backgroundOrigin !== 'padding-box'
-                  ) {
-                    rectNode.backgroundStyles.push({
-                      name: 'backgroundOrigin',
-                      value: computedStyle.backgroundOrigin,
-                    });
-                  }
-                  if (
-                    computedStyle.backgroundRepeat &&
-                    computedStyle.backgroundRepeat !== 'no-repeat'
-                  ) {
-                    rectNode.backgroundStyles.push({
-                      name: 'backgroundRepeat',
-                      value: computedStyle.backgroundRepeat,
-                    });
-                  }
-                } else {
-                  const gradientMatch =
-                    computedStyle.backgroundImage.match(/gradient/);
-                  if (gradientMatch) {
-                    rectNode.backgroundStyles = [];
-                    rectNode.backgroundStyles.push({
-                      name: 'backgroundImage',
-                      value: computedStyle.backgroundImage,
-                    });
-                  }
-                }
-              }
-              if (el instanceof SVGSVGElement) {
-                const url = `data:image/svg+xml,${encodeURIComponent(
-                  el.outerHTML.replace(/\s+/g, ' ')
-                )}`;
-                if (url) {
-                  fills.push({
-                    url,
-                    type: 'IMAGE',
-                    // TODO: object fit, position
-                    scaleMode: 'FILL',
-                    imageHash: null,
-                  });
-                }
-              }
-              if (el instanceof HTMLImageElement) {
-                const url = el.src;
-                if (url) {
-                  fills.push({
-                    url,
-                    type: 'IMAGE',
-                    // TODO: object fit, position
-                    scaleMode:
-                      computedStyle.objectFit === 'contain' ? 'FIT' : 'FILL',
-                    imageHash: null,
-                    isImage: true,
-                  });
-                }
-              }
-              if (el instanceof HTMLPictureElement) {
-                const firstSource = el.querySelector('source');
-                if (firstSource) {
-                  const src = getUrl(firstSource.srcset.split(/[,\s]+/g)[0]);
-                  // TODO: if not absolute
-                  if (src) {
-                    fills.push({
-                      url: src,
-                      type: 'IMAGE',
-                      // TODO: object fit, position
-                      scaleMode:
-                        computedStyle.objectFit === 'contain' ? 'FIT' : 'FILL',
-                      imageHash: null,
-                      isImage: true,
-                    });
-                  }
-                } else {
-                  const img = el.querySelector('img');
-                  if (img) {
-                    const url = img.src;
-                    if (url) {
-                      fills.push({
-                        url,
-                        type: 'IMAGE',
-                        scaleMode:
-                          computedStyle.objectFit === 'contain'
-                            ? 'FIT'
-                            : 'FILL',
-                        imageHash: null,
-                        isImage: true,
-                      });
-                    }
-                  }
-                }
-              }
-              if (el instanceof HTMLVideoElement) {
-                const url = el.poster;
-                if (url) {
-                  fills.push({
-                    url,
-                    type: 'IMAGE',
-                    // TODO: object fit, position
-                    scaleMode:
-                      computedStyle.objectFit === 'contain' ? 'FIT' : 'FILL',
-                    imageHash: null,
-                    isVideo: true,
-                  });
-                }
-              }
-              if (
-                computedStyle.boxShadow &&
-                computedStyle.boxShadow !== 'none'
-              ) {
-                const LENGTH_REG = /^[0-9]+[a-zA-Z%]+?$/;
-                const toNum = (v) => {
-                  // if (!/px$/.test(v) && v !== '0') return v;
-                  if (!/px$/.test(v) && v !== '0') return 0;
-                  const n = parseFloat(v);
-                  // return !isNaN(n) ? n : v;
-                  return !isNaN(n) ? n : 0;
-                };
-                const isLength = (v) => v === '0' || LENGTH_REG.test(v);
-                const parseValue = (str) => {
-                  // TODO: this is broken for multiple box shadows
-                  if (str.startsWith('rgb')) {
-                    // Werid computed style thing that puts the color in the front not back
-                    const colorMatch = str.match(/(rgba?\(.+?\))(.+)/);
-                    if (colorMatch) {
-                      str = (colorMatch[2] + ' ' + colorMatch[1]).trim();
-                    }
-                  }
-                  const PARTS_REG = /\s(?![^(]*\))/;
-                  const parts = str.split(PARTS_REG);
-                  const inset = parts.includes('inset');
-                  const last = parts.slice(-1)[0];
-                  const color = !isLength(last) ? last : 'rgba(0, 0, 0, 1)';
-                  const nums = parts
-                    .filter((n) => n !== 'inset')
-                    .filter((n) => n !== color)
-                    .map(toNum);
-                  const [offsetX, offsetY, blurRadius, spreadRadius] = nums;
-                  return {
-                    inset,
-                    offsetX,
-                    offsetY,
-                    blurRadius,
-                    spreadRadius,
-                    color,
-                  };
-                };
-                const parsed = parseValue(computedStyle.boxShadow);
-                const color = getRgb(parsed.color);
-                if (color) {
-                  rectNode.effects = [
-                    {
-                      color,
-                      type: 'BOX_SHADOW',
-                      radius: parsed.blurRadius,
-                      blendMode: 'NORMAL',
-                      visible: true,
-                      offset: {
-                        x: parsed.offsetX,
-                        y: parsed.offsetY,
-                      },
-                    },
-                  ];
-                }
-              }
-              const borderTopLeftRadius = parseUnits(
-                computedStyle.borderTopLeftRadius
-              );
-              if (borderTopLeftRadius && borderTopLeftRadius.value) {
-                rectNode.cornerRadius = 'figma.mixed';
-                rectNode.topLeftRadius = borderTopLeftRadius.value;
-              }
-              const borderTopRightRadius = parseUnits(
-                computedStyle.borderTopRightRadius
-              );
-              if (borderTopRightRadius && borderTopRightRadius.value) {
-                rectNode.cornerRadius = 'figma.mixed';
-                rectNode.topRightRadius = borderTopRightRadius.value;
-              }
-              const borderBottomRightRadius = parseUnits(
-                computedStyle.borderBottomRightRadius
-              );
-              if (borderBottomRightRadius && borderBottomRightRadius.value) {
-                rectNode.cornerRadius = 'figma.mixed';
-                rectNode.bottomRightRadius = borderBottomRightRadius.value;
-              }
-              const borderBottomLeftRadius = parseUnits(
-                computedStyle.borderBottomLeftRadius
-              );
-              if (borderBottomLeftRadius && borderBottomLeftRadius.value) {
-                rectNode.cornerRadius = 'figma.mixed';
-                rectNode.bottomLeftRadius = borderBottomLeftRadius.value;
-              }
-
-              layers.push(rectNode);
+            } else if (el instanceof HTMLInputElement) {
+              handleInputNode({ el, rectNode, computedStyle });
+            } else if (el instanceof HTMLSelectElement) {
+              handleSelectNode({ el, rectNode, computedStyle });
+            } else if (el instanceof HTMLIFrameElement) {
+              handleIframeNode({ el, rectNode, computedStyle });
             }
+            if (computedStyle.boxShadow && computedStyle.boxShadow !== 'none') {
+              handleComputedStyle.processBoxShadow({
+                rectNode,
+                computedStyle,
+                el,
+              });
+            }
+            // 处理圆角
+            handleComputedStyle.processBorderRadius({
+              rectNode,
+              computedStyle,
+            });
+            layers.push(rectNode);
           }
         });
       }
       const textNodes = textNodesUnder(el);
 
-      function getRgb(colorString) {
-        if (!colorString) {
-          return null;
-        }
-        const [_1, r, g, b, _2, a] =
-          colorString.match(
-            /rgba?\(([\d\.]+), ([\d\.]+), ([\d\.]+)(, ([\d\.]+))?\)/
-          ) || [];
-        const none = a && parseFloat(a) === 0;
-        if (r && g && b && !none) {
-          return {
-            r: parseInt(r) / 255,
-            g: parseInt(g) / 255,
-            b: parseInt(b) / 255,
-            a: a ? parseFloat(a) : 1,
-          };
-        }
-        return null;
-      }
       const fastClone = (data) =>
         typeof data === 'symbol' ? null : JSON.parse(JSON.stringify(data));
       for (const node of textNodes) {
-        // debugger;
         if (node.textContent && node.textContent.trim().length) {
           const parent = node.parentElement;
-          if (parent) {
-            if (isHidden(parent)) {
-              continue;
-            }
+          if (!parent) continue;
 
-            const computedStyles = getComputedStyle(parent);
-            // fix 文本宽高
-            const range = document.createRange();
-            range.selectNode(node);
-
-            const rect = fastClone(range.getBoundingClientRect());
-
-            rect.y = rect.y - bodyDeltaY;
-            rect.top = rect.top - bodyDeltaY;
-            //   const rect = fastClone(parent.getBoundingClientRect());
-            const lineHeight = parseUnits(computedStyles.lineHeight);
-            range.detach();
-            // fix TextNode节点通过选取区域计算出来的高度和实际位于父节点上的高度不一致问题
-            // 由于存在文本换行问题，故比较偏差值小于6px的情况下，将文本节点的高度设置为lineHeight的值
-            if (
-              lineHeight &&
-              (rect.height < lineHeight.value ||
-                Math.abs(rect.height - lineHeight.value) < 10)
-            ) {
-              const delta = rect.height - lineHeight.value;
-              rect.top += delta / 2;
-              rect.height = lineHeight.value;
-            }
-            if (rect.height < 1 || rect.width < 1) {
-              continue;
-            }
-            const textNode = {
-              x: parseFloat(rect.left),
-              ref: node,
-              y: parseFloat(rect.top),
-              width: parseFloat(rect.width),
-              height: parseFloat(rect.height),
-              type: 'TEXT',
-              characters: node.textContent.trim().replace(/\s+/g, ' ') || '',
-            };
-            const fills = [];
-            const rgb = getRgb(computedStyles.color);
-            if (rgb) {
-              fills.push({
-                type: 'SOLID',
-                color: {
-                  r: rgb.r,
-                  g: rgb.g,
-                  b: rgb.b,
-                },
-                opacity: rgb.a || 1,
-              });
-            }
-            if (fills.length) {
-              textNode.fills = fills;
-            }
-            const letterSpacing = parseUnits(computedStyles.letterSpacing);
-            if (letterSpacing) {
-              textNode.letterSpacing = letterSpacing;
-            }
-            if (lineHeight) {
-              textNode.lineHeight = lineHeight;
-            }
-            const { textTransform } = computedStyles;
-            switch (textTransform) {
-              case 'uppercase': {
-                textNode.textCase = 'UPPER';
-                break;
-              }
-              case 'lowercase': {
-                textNode.textCase = 'LOWER';
-                break;
-              }
-              case 'capitalize': {
-                textNode.textCase = 'TITLE';
-                break;
-              }
-            }
-            const fontSize = parseUnits(computedStyles.fontSize);
-            if (fontSize) {
-              textNode.fontSize = parseFloat(fontSize.value);
-            }
-            if (computedStyles.fontWeight) {
-              textNode.fontWeight = computedStyles.fontWeight;
-            }
-            if (computedStyles.fontFamily) {
-              // const font = computedStyles.fontFamily.split(/\s*,\s*/);
-              textNode.fontFamily = computedStyles.fontFamily;
-            }
-            if (computedStyles.textDecoration) {
-              if (
-                computedStyles.textDecoration === 'underline' ||
-                computedStyles.textDecoration === 'strikethrough'
-              ) {
-                textNode.textDecoration =
-                  computedStyles.textDecoration.toUpperCase();
-              }
-            }
-            if (computedStyles.textAlign) {
-              if (
-                ['left', 'center', 'right', 'justified'].includes(
-                  computedStyles.textAlign
-                )
-              ) {
-                textNode.textAlignHorizontal =
-                  computedStyles.textAlign.toUpperCase();
-              }
-            }
-            layers.push(textNode);
+          if (isHidden(parent)) {
+            continue;
           }
+
+          const computedStyles = getComputedStyle(parent);
+          // fix 文本宽高
+          const range = document.createRange();
+          range.selectNode(node);
+
+          const rect = fastClone(range.getBoundingClientRect());
+
+          rect.y = rect.y - bodyDeltaY;
+          rect.top = rect.top - bodyDeltaY;
+          //   const rect = fastClone(parent.getBoundingClientRect());
+          const lineHeight = parseUnits(computedStyles.lineHeight);
+          range.detach();
+          // fix TextNode节点通过选取区域计算出来的高度和实际位于父节点上的高度不一致问题
+          // 由于存在文本换行问题，故比较偏差值小于6px的情况下，将文本节点的高度设置为lineHeight的值
+          if (
+            lineHeight &&
+            (rect.height < lineHeight.value ||
+              Math.abs(rect.height - lineHeight.value) < 10)
+          ) {
+            const delta = rect.height - lineHeight.value;
+            rect.top += delta / 2;
+            rect.height = lineHeight.value;
+          }
+          if (rect.height < 1 || rect.width < 1) {
+            continue;
+          }
+          const textNode = {
+            x: parseFloat(rect.left),
+            ref: node,
+            y: parseFloat(rect.top),
+            width: parseFloat(rect.width),
+            height: parseFloat(rect.height),
+            type: 'TEXT',
+            characters: node.textContent.trim().replace(/\s+/g, ' ') || '',
+          };
+          const fills = [];
+          const rgb = getRgb(computedStyles.color);
+          if (rgb) {
+            fills.push({
+              type: 'SOLID',
+              color: {
+                r: rgb.r,
+                g: rgb.g,
+                b: rgb.b,
+              },
+              opacity: rgb.a || 1,
+            });
+          } else {
+            // 文字记录下透明颜色
+            fills.push({
+              type: 'SOLID',
+              color: { r: 0, g: 0, b: 0 },
+              opacity: 0,
+            });
+          }
+          if (fills.length) {
+            textNode.fills = fills;
+          }
+          if (lineHeight) {
+            textNode.lineHeight = lineHeight;
+          }
+          handleComputedStyle.processLetterSpacing({
+            rectNode: textNode,
+            computedStyle: computedStyles,
+          });
+          handleComputedStyle.processTextTransform({
+            rectNode: textNode,
+            computedStyle: computedStyles,
+          });
+          handleComputedStyle.processFont({
+            rectNode: textNode,
+            computedStyle: computedStyles,
+          });
+          layers.push(textNode);
         }
       }
     }
     // TODO: send frame: { children: []}
     const root = {
-      type: 'FRAME',
+      type: 'BODY',
       width: parseFloat(window.innerWidth),
       height: parseFloat(document.documentElement.scrollHeight),
       x: 0,
       y: 0,
       ref: document.body,
+      _extraStyle: {
+        backgroundColor: getComputedStyle(document.body).backgroundColor,
+      },
     };
     layers.unshift(root);
     const hasChildren = (node) => node && Array.isArray(node.children);
@@ -1224,6 +877,9 @@ function walkPage(paramArg) {
     let layerDict = {};
     for (let layer of layers) {
       if (!layer.cnt_id) {
+        if (layer.type === 'BODY') {
+          layerTree.push(layer);
+        }
         continue;
       }
       layerDict[layer.cnt_id] = layer;
@@ -1342,7 +998,7 @@ function walkPage(paramArg) {
           targetObj.borderBottomColor = layerComputedStyle.borderBottomColor;
         }
 
-        if (layerComputedStyle.position === 'fixed') {
+        if (['fixed'].includes(layerComputedStyle.position)) {
           layer.isFixed = true;
         }
         // zIndex 大于10的绝对定位元素认为是弹窗
@@ -1371,16 +1027,10 @@ function walkPage(paramArg) {
         ) {
           layer.visible = false;
         }
-        // 增加记录selenium 节点id
-        // let id = layer.ref.dataset && layer.ref.dataset.__webdriver_id;
+
         let id = layer.ref.dataset && layer.ref.dataset.__dom_id;
         let parent_id = id;
         if (!id) {
-          // if (!domCnt[layer.ref.tagName]) {
-          //   domCnt[layer.ref.tagName] = 1;
-          // } else {
-          //   domCnt[layer.ref.tagName]++;
-          // }
           if (!domCnt['cnt']) {
             domCnt['cnt'] = 1;
           } else {
@@ -1402,9 +1052,6 @@ function walkPage(paramArg) {
               }
             }
           }
-
-          // id = layer.ref.tagName + "_" + domCnt[layer.ref.tagName];
-          // layer.ref.dataset.__dom_id = id;
         }
         // sel_id可能先用来找触发事件的obj,整个页面描述处理完成后再递归遍历删除
         targetObj.sel_id = id;
@@ -1414,60 +1061,18 @@ function walkPage(paramArg) {
         layer.parent_id = parent_id.toString();
         layer.cnt_id = id.toString();
         layer.isInline = layerComputedStyle.display.includes('inline');
-        // 横向或者纵向为hidden的，才确定为需要剪切内容
-        layer.clipsContent =
-          layerComputedStyle.overflowX == 'hidden' ||
-          layerComputedStyle.overflowY == 'hidden';
-        // 记录仅X轴滚动或者仅Y轴滚动
-        layer.clipsContentScrollX = layerComputedStyle.overflowX === 'scroll';
-        layer.clipsContentScrollY = layerComputedStyle.overflowY === 'scroll';
 
-        recordExtraStyle({ layer, computedStyle: layerComputedStyle });
+        handleComputedStyle.processOverflow({
+          layer,
+          computedStyle: layerComputedStyle,
+        });
 
-        if (layer.ref.tagName === 'INPUT') {
-          layer.type = 'INPUT';
-          if (layer.ref.placeholder) {
-            layer.placeholder = layer.ref.placeholder;
-          }
-          if (layer.ref.value) {
-            layer.value = layer.ref.value;
-          }
-          if (layerComputedStyle.color) {
-            const rgb = getRgb(layerComputedStyle.color);
-            if (rgb) {
-              layer.fontColorFills = [
-                {
-                  type: 'SOLID',
-                  color: {
-                    r: rgb.r,
-                    g: rgb.g,
-                    b: rgb.b,
-                  },
-                  opacity: rgb.a || 1,
-                },
-              ];
-            }
-          }
-          function getRgb(colorString) {
-            if (!colorString) {
-              return null;
-            }
-            const [_1, r, g, b, _2, a] =
-              colorString.match(
-                /rgba?\(([\d\.]+), ([\d\.]+), ([\d\.]+)(, ([\d\.]+))?\)/
-              ) || [];
-            const none = a && parseFloat(a) === 0;
-            if (r && g && b && !none) {
-              return {
-                r: parseInt(r) / 255,
-                g: parseInt(g) / 255,
-                b: parseInt(b) / 255,
-                a: a ? parseFloat(a) : 1,
-              };
-            }
-            return null;
-          }
-        }
+        recordExtraStyle({
+          layer,
+          computedStyle: layerComputedStyle,
+          el: layer.ref,
+        });
+
         if (layer.type == 'SVG') {
           // console.log("debug svg layer", layer);
           targetObj.svg = layer.svg;
@@ -1479,14 +1084,6 @@ function walkPage(paramArg) {
         let text_id = 0;
         let parent_id = 0;
         if (!id) {
-          // if (!domCnt[parentRef.tagName]) {
-          //   domCnt[parentRef.tagName] = 1;
-          // } else {
-          //   domCnt[parentRef.tagName]++;
-          // }
-          // // id = Math.random().toString(36).substring(2) + Date.now().toString(36);
-          // id = parentRef.tagName + "_" + domCnt[parentRef.tagName];
-          // parentRef.dataset.__dom_id = id;
           if (!domCnt['cnt']) {
             domCnt['cnt'] = 1;
           } else {
@@ -1545,6 +1142,11 @@ function walkPage(paramArg) {
           layer.visible = false;
         }
         // targetObj.className = parentRef.className;
+        recordExtraStyle({
+          layer,
+          computedStyle: computedStyles,
+          el: layer.ref,
+        });
       }
       simpleStage.push(targetObj);
     }
@@ -1552,7 +1154,7 @@ function walkPage(paramArg) {
   }
 
   // 记录额外的style信息，方便编辑器中转相对定位时使用
-  function recordExtraStyle({ layer, computedStyle }) {
+  function recordExtraStyle({ layer, computedStyle, el }) {
     const {
       textAlign,
       whiteSpace,
@@ -1560,15 +1162,26 @@ function walkPage(paramArg) {
       position,
       flex,
       float,
-      pointerEvents,
+      boxShadow,
+      lineHeight,
     } = computedStyle || {};
     let extraStyle = {
       textAlign,
+      lineHeight,
       whiteSpace,
       display,
       position,
       flex,
     };
+    // debug 字段（可删除）
+    if (true) {
+      let { tagName, className, id } = el || {};
+      Object.assign(extraStyle, {
+        tagName,
+        ...(typeof id === 'string' && id ? { id } : { className }),
+      });
+    }
+
     switch (display) {
       case 'flex':
       case 'inline-flex':
@@ -1582,12 +1195,15 @@ function walkPage(paramArg) {
     if (float !== 'none') {
       extraStyle.float = float;
     }
-    if (pointerEvents !== 'auto') {
-      extraStyle.pointerEvents = pointerEvents;
+    if (boxShadow && boxShadow !== 'none') {
+      extraStyle.boxShadow = boxShadow;
     }
 
+    recordExtraStyle.getPointerEvents({ extraStyle, computedStyle });
     recordExtraStyle.getPadding({ extraStyle, computedStyle });
     recordExtraStyle.getMargin({ extraStyle, computedStyle });
+    recordExtraStyle.getStickyPos({ extraStyle, computedStyle });
+    recordExtraStyle.getBackgroundClip({ extraStyle, computedStyle });
 
     layer._extraStyle = extraStyle;
   }
@@ -1672,6 +1288,607 @@ function walkPage(paramArg) {
       extraStyle.gridGap = gridGap;
     }
   };
+  recordExtraStyle.getPointerEvents = ({ extraStyle, computedStyle }) => {
+    const { pointerEvents } = computedStyle;
+    extraStyle.pointerEvents = pointerEvents;
+  };
+  recordExtraStyle.getStickyPos = ({ extraStyle, computedStyle }) => {
+    const { position, top, left, right, bottom } = computedStyle;
+    if (position === 'sticky') {
+      if (top !== 'auto') {
+        extraStyle.top = top;
+      }
+      if (left !== 'auto') {
+        extraStyle.left = left;
+      }
+      if (right !== 'auto') {
+        extraStyle.right = right;
+      }
+      if (bottom !== 'auto') {
+        extraStyle.bottom = bottom;
+      }
+      // zIndex之前已经处理了，不需要通过额外样式记录
+    }
+  };
+  recordExtraStyle.getBackgroundClip = ({ extraStyle, computedStyle }) => {
+    const { backgroundClip } = computedStyle;
+    if (backgroundClip === 'text') {
+      extraStyle.backgroundClip = backgroundClip;
+    }
+  };
+  // 文件节点遍历器：指定遍历的起始节点、节点类型过滤器
+  function textNodesUnder(el) {
+    let n = null;
+    const a = [];
+    const walk = document.createTreeWalker(
+      el,
+      NodeFilter.SHOW_TEXT, // 只显示文本节点
+      null,
+      false
+    );
+    while ((n = walk.nextNode())) {
+      a.push(n);
+    }
+    return a;
+  }
+  // 判断节点是否隐藏
+  function isHidden(element) {
+    let el = element;
+    let hasFixedPos = false;
+    do {
+      const computed = getComputedStyle(el);
+      // contents布局跳过检测
+      if (computed.display === 'contents') continue;
+
+      if (computed.position === 'fixed') hasFixedPos = true;
+
+      if (
+        // open opacity for hidden check
+        computed.opacity == '0' ||
+        computed.display === 'none' ||
+        computed.visibility === 'hidden'
+      ) {
+        return true;
+      }
+      // Some sites hide things by having overflow: hidden and height: 0, e.g. dropdown menus that animate height in
+      // fixed 定位的节点下不会受到祖先节点的overflow:hidden的影响
+      // static定位方式的节点overflow:hidden且高度为0的节点不会隐藏内部的节点内容
+      if (
+        !hasFixedPos &&
+        computed.position !== 'static' &&
+        computed.overflow !== 'visible' &&
+        el.getBoundingClientRect().height < 1
+      ) {
+        return true;
+      }
+    } while ((el = el.parentElement));
+    return false;
+  }
+  // 处理Picture节点
+  function handlePictureNode({ el, fills, todoList, computedStyle }) {
+    let { url, todoNode } = handlePictureNode.getSrc({ el }) || {};
+    if (todoNode) todoList.push(todoNode);
+    if (url) {
+      fills.push({
+        url,
+        type: 'IMAGE',
+        scaleMode: computedStyle.objectFit === 'contain' ? 'FIT' : 'FILL',
+        imageHash: null,
+        isImage: true,
+      });
+    }
+  }
+  handlePictureNode.getUrl = ({ url }) => {
+    if (!url) {
+      return '';
+    }
+    let final = url.trim();
+    if (final.startsWith('//')) {
+      final = 'https:' + final;
+    }
+    if (final.startsWith('/')) {
+      final = 'https://' + location.host + final;
+    }
+    return final;
+  };
+  handlePictureNode.getSrc = ({ el }) => {
+    let url = null;
+    let node;
+    // 先获取source节点的图片，由第一个source节点大多数情况下是页面宽度最大情况下的图片
+    const firstSource = el.querySelector('source');
+    if (firstSource) {
+      if (firstSource) {
+        url = handlePictureNode.getUrl({
+          url: handlePictureNode.getUrlFromSrcset({
+            srcset: firstSource.srcset,
+          }),
+        });
+        node = firstSource;
+      }
+    }
+    if (!url) {
+      const img = el.querySelector('img');
+      // 获取图片的src
+      let u = handleImageNode.getUrl({ el: img });
+      url = handlePictureNode.getUrl({ url: u });
+      node = img;
+    }
+
+    if (url) {
+      if (handlePictureNode.canMergePictureChild({ child: node, el })) {
+        return { url };
+      } else {
+        return { todoNode: node };
+      }
+    }
+    return {};
+  };
+  handlePictureNode.canMergePictureChild = ({ el, child }) => {
+    let computedStyle = getComputedStyle(child);
+    let { position } = computedStyle || {};
+    let abs = ['fixed', 'absolute'].includes(position);
+    if (abs) return false;
+    let cRect = child.getBoundingClientRect();
+    let eRect = el.getBoundingClientRect();
+    // 如果图片节点的宽高和picture父节点的宽高不一致，就不合并
+    return !(
+      cRect.width &&
+      cRect.height &&
+      (cRect.width != eRect.width || cRect.height != eRect.height)
+    );
+  };
+  handlePictureNode.getUrlFromSrcset = ({ srcset }) => {
+    return srcset.split(/\s.*?[,]+\s/g)[0];
+  };
+  // 处理SVG节点
+  function handleSvgNode({ el, layers, getBoundingClientRect }) {
+    const rect = getBoundingClientRect(el);
+    let { left, top, width, height } = rect || {};
+    let computedStyle = getComputedStyle(el);
+    let { fill, color } = computedStyle || {};
+    // TODO: pull in CSS/computed styles
+    // TODO: may need to pull in layer styles too like shadow, bg color, etc
+    let layer = {
+      type: 'SVG',
+      ref: el,
+      svg: el.outerHTML,
+      isSVG: true,
+      isRawSVG: true,
+      x: parseFloat(left),
+      y: parseFloat(top),
+      width: parseFloat(width),
+      height: parseFloat(height),
+    };
+    let cloneNode;
+    // 设置填充样式
+    if (fill && fill !== 'rgb(0, 0, 0)') {
+      cloneNode = cloneNode || el.cloneNode(true);
+      cloneNode.setAttribute('fill', fill);
+    }
+    if (color && color !== 'rgb(0, 0, 0)') {
+      cloneNode = cloneNode || el.cloneNode(true);
+      cloneNode.setAttribute('color', color);
+    }
+    if (cloneNode) {
+      layer.svg = cloneNode.outerHTML;
+    }
+
+    layers.push(layer);
+  }
+  // 处理输入框节点
+  function handleInputNode({ el, rectNode, computedStyle }) {
+    rectNode.type = 'INPUT';
+    if (el.value) rectNode.value = el.value;
+    rectNode.inputType = el.type;
+    if (el.type === 'submit') {
+      handleComputedStyle.processFont({ rectNode, computedStyle });
+    }
+
+    // 输入框字体颜色
+    if (computedStyle.color) {
+      const rgb = getRgb(computedStyle.color);
+      if (rgb) {
+        rectNode.fontColorFills = [
+          {
+            type: 'SOLID',
+            color: {
+              r: rgb.r,
+              g: rgb.g,
+              b: rgb.b,
+            },
+            opacity: rgb.a || 1,
+          },
+        ];
+      }
+    }
+    // placeholder不存在就设置为空
+    rectNode.placeholder = el.placeholder ? el.placeholder : '';
+    let placeholderComputedStyle = getComputedStyle(el, '::placeholder');
+    // placeholder字体颜色
+    if (placeholderComputedStyle.color) {
+      rectNode.placeholderColor = placeholderComputedStyle.color;
+    }
+    // Padding
+    if (computedStyle.paddingLeft !== '0px') {
+      rectNode.paddingLeft = parseUnits(computedStyle.paddingLeft).value || 0;
+    }
+    if (computedStyle.paddingRight !== '0px') {
+      rectNode.paddingRight = parseUnits(computedStyle.paddingRight).value || 0;
+    }
+    if (computedStyle.paddingTop !== '0px') {
+      rectNode.paddingTop = parseUnits(computedStyle.paddingTop).value || 0;
+    }
+    if (computedStyle.paddingBottom !== '0px') {
+      rectNode.paddingBottom =
+        parseUnits(computedStyle.paddingBottom).value || 0;
+    }
+  }
+  // 处理Image节点
+  function handleImageNode({ el, computedStyle, rectNode }) {
+    let { fills, width, height } = rectNode || {};
+    const url = handlePictureNode.getUrl({
+      url: handleImageNode.getUrl({ el }),
+    });
+    if (url) {
+      let scaleMode;
+      switch (computedStyle.objectFit) {
+        case 'cover':
+          // TODO...
+          let aspect = width / height;
+          scaleMode = aspect > 1 ? 'FIT' : 'FILL';
+          break;
+        case 'contain':
+          scaleMode = 'FIT';
+          break;
+        default:
+          scaleMode = 'FILL';
+          break;
+      }
+
+      fills.push({
+        url,
+        type: 'IMAGE',
+        scaleMode,
+        imageHash: null,
+        isImage: true,
+      });
+    }
+  }
+  handleImageNode.getUrl = ({ el }) => {
+    return (
+      el?.src ||
+      (el?.srcset
+        ? handlePictureNode.getUrlFromSrcset({
+            srcset: el.srcset,
+          })
+        : '')
+    );
+  };
+  // 处理select节点
+  function handleSelectNode({ el, rectNode, computedStyle }) {
+    rectNode.type = 'TEXT'; // 显示为一个文本
+    rectNode.options = Array.from(el.options).map((option) => {
+      return {
+        value: option.value,
+        label: option.text,
+        selected: option.selected,
+      };
+    });
+    rectNode.characters = el.options[el.selectedIndex].text;
+    // 字体颜色
+    handleComputedStyle.processColor({ rectNode, computedStyle });
+    // 字体大小
+    handleComputedStyle.processFontSize({ rectNode, computedStyle });
+    rectNode.textAlignVertical = 'CENTER'; // 垂直居中
+    rectNode.paddingLeft = parseUnits(computedStyle.paddingLeft).value || 0;
+    rectNode.layoutMode = 'HORIZONTAL'; // 水平布局
+  }
+  // 处理IFrame节点
+  function handleIframeNode({ el, rectNode, computedStyle }) {
+    rectNode.type = 'IFRAME';
+    rectNode.src = el.src;
+  }
+
+  // 获取rgb颜色值
+  function getRgb(colorString) {
+    if (!colorString) {
+      return null;
+    }
+    const [_1, r, g, b, _2, a] =
+      colorString.match(
+        /rgba?\(([\d\.]+), ([\d\.]+), ([\d\.]+)(, ([\d\.]+))?\)/
+      ) || [];
+    const none = a && parseFloat(a) === 0;
+    if (r && g && b && !none) {
+      return {
+        r: parseInt(r) / 255,
+        g: parseInt(g) / 255,
+        b: parseInt(b) / 255,
+        a: a ? parseFloat(a) : 1,
+      };
+    }
+    return null;
+  }
+  // 处理计算样式
+  function handleComputedStyle({}) {
+    // TODO...
+  }
+  handleComputedStyle.processContent = ({ content, fills }) => {
+    const urlMatch = content.match(/url\(['"]?(.*?)['"]?\)/);
+    const url = urlMatch && urlMatch[1];
+    if (!url) return;
+    fills.push({
+      url,
+      type: 'IMAGE',
+      scaleMode: 'FILL',
+      imageHash: null,
+    });
+  };
+  handleComputedStyle.processBoxShadow = ({ rectNode, computedStyle, el }) => {
+    const LENGTH_REG = /^[0-9]+[a-zA-Z%]+?$/;
+    const toNum = (v) => {
+      if (!/px$/.test(v) && v !== '0') return 0;
+      const n = parseFloat(v);
+      return !isNaN(n) ? n : 0;
+    };
+    const isLength = (v) => v === '0' || LENGTH_REG.test(v);
+    const parseValue = (str) => {
+      // TODO: this is broken for multiple box shadows
+      if (str.startsWith('rgb')) {
+        const colorMatch = str.match(/(rgba?\(.+?\))(.+)/);
+        if (colorMatch) {
+          str = (colorMatch[2] + ' ' + colorMatch[1]).trim();
+        }
+      }
+      const PARTS_REG = /\s(?![^(]*\))/;
+      const parts = str.split(PARTS_REG);
+      const inset = parts.includes('inset');
+      const last = parts.slice(-1)[0];
+      const color = !isLength(last) ? last : 'rgba(0, 0, 0, 1)';
+      const nums = parts
+        .filter((n) => n !== 'inset')
+        .filter((n) => n !== color)
+        .map(toNum);
+      const [offsetX, offsetY, blurRadius, spreadRadius] = nums;
+      return {
+        inset,
+        offsetX,
+        offsetY,
+        blurRadius,
+        spreadRadius,
+        color,
+      };
+    };
+    const parsed = parseValue(computedStyle.boxShadow);
+    const color = getRgb(parsed.color);
+    if (color) {
+      rectNode.effects = [
+        {
+          color,
+          type: 'BOX_SHADOW',
+          radius: parsed.blurRadius,
+          blendMode: 'NORMAL',
+          visible: true,
+          offset: {
+            x: parsed.offsetX,
+            y: parsed.offsetY,
+          },
+        },
+      ];
+    }
+  };
+  handleComputedStyle.processColor = ({ rectNode, computedStyle }) => {
+    const color = getRgb(computedStyle.color);
+    if (color) {
+      rectNode.fills = [
+        {
+          type: 'SOLID',
+          color,
+          opacity: color.a || 1,
+        },
+      ];
+    }
+  };
+  handleComputedStyle.processFontSize = ({ rectNode, computedStyle }) => {
+    const fontSize = parseUnits(computedStyle.fontSize);
+    if (fontSize) {
+      rectNode.fontSize = parseFloat(fontSize.value);
+    }
+  };
+  handleComputedStyle.processFont = ({ rectNode, computedStyle }) => {
+    const { fontSize, fontFamily, fontWeight, textDecoration, textAlign } =
+      computedStyle;
+    handleComputedStyle.processFontSize({ rectNode, computedStyle });
+    if (fontWeight) {
+      rectNode.fontWeight = fontWeight;
+    }
+    if (fontFamily) {
+      rectNode.fontFamily = fontFamily;
+    }
+    if (['underline', 'strikethrough'].includes(textDecoration)) {
+      rectNode.textDecoration = textDecoration.toUpperCase();
+    }
+    if (['left', 'center', 'right', 'justified'].includes(textAlign)) {
+      rectNode.textAlignHorizontal = textAlign.toUpperCase();
+    }
+  };
+  handleComputedStyle.processLetterSpacing = ({ rectNode, computedStyle }) => {
+    const letterSpacing = parseUnits(computedStyle.letterSpacing);
+    if (letterSpacing) {
+      rectNode.letterSpacing = letterSpacing;
+    }
+  };
+  handleComputedStyle.processTextTransform = ({ rectNode, computedStyle }) => {
+    const { textTransform } = computedStyle;
+    switch (textTransform) {
+      case 'uppercase': {
+        rectNode.textCase = 'UPPER';
+        break;
+      }
+      case 'lowercase': {
+        rectNode.textCase = 'LOWER';
+        break;
+      }
+      case 'capitalize': {
+        rectNode.textCase = 'TITLE';
+        break;
+      }
+    }
+  };
+  handleComputedStyle.processOverflow = ({ layer, computedStyle }) => {
+    let { overflowX, overflowY } = computedStyle || {};
+    // 横向或者纵向为hidden的，才确定为需要剪切内容
+    layer.clipsContent =
+      ['hidden', 'scroll', 'auto'].includes(overflowX) ||
+      ['hidden', 'scroll', 'auto'].includes(overflowY);
+    // 记录仅X轴滚动或者仅Y轴滚动
+    layer.clipsContentScrollX = overflowX === 'scroll';
+    layer.clipsContentScrollY = ['scroll', 'auto'].includes(overflowY);
+  };
+  handleComputedStyle.processBackgroundImage = ({
+    rectNode,
+    computedStyle,
+  }) => {
+    const {
+      backgroundImage,
+      backgroundSize,
+      backgroundPosition,
+      backgroundOrigin,
+      backgroundRepeat,
+      backgroundClip,
+    } = computedStyle || {};
+    const { fills } = rectNode;
+    const urlMatch = backgroundImage.match(/url\(['"]?(.*?)['"]?\)/);
+    const url = urlMatch && urlMatch[1];
+    rectNode.backgroundStyles = [];
+    if (backgroundClip && backgroundClip !== 'border-box') {
+      rectNode.backgroundStyles.push({
+        name: 'backgroundClip',
+        value: backgroundClip,
+      });
+      // TODO: 对于text类型，需要设置color为透明
+      // if (backgroundClip === 'text') {
+      //   rectNode.backgroundStyles.push({
+      //     name: 'color',
+      //     value: 'rgba(0,0,0,0) !important',
+      //   });
+      // }
+    }
+    if (url) {
+      fills.push({
+        url,
+        type: 'IMAGE',
+        scaleMode: backgroundSize === 'contain' ? 'FIT' : 'FILL',
+        imageHash: null,
+      });
+      if (backgroundPosition && backgroundPosition !== '50% 50%') {
+        rectNode.backgroundStyles.push({
+          name: 'backgroundPosition',
+          value: backgroundPosition,
+        });
+      }
+      if (backgroundSize && backgroundSize !== 'cover') {
+        rectNode.backgroundStyles.push({
+          name: 'backgroundSize',
+          value: backgroundSize,
+        });
+      }
+      if (backgroundOrigin && backgroundOrigin !== 'padding-box') {
+        rectNode.backgroundStyles.push({
+          name: 'backgroundOrigin',
+          value: backgroundOrigin,
+        });
+      }
+      if (backgroundRepeat && backgroundRepeat !== 'no-repeat') {
+        rectNode.backgroundStyles.push({
+          name: 'backgroundRepeat',
+          value: backgroundRepeat,
+        });
+      }
+    } else {
+      const gradientMatch = backgroundImage.match(/gradient/);
+      if (gradientMatch) {
+        rectNode.backgroundStyles.push({
+          name: 'backgroundImage',
+          value: backgroundImage,
+        });
+      }
+    }
+  };
+  handleComputedStyle.processBorderRadius = ({ rectNode, computedStyle }) => {
+    const borderTopLeftRadius = getCornerRadius({
+      radius: computedStyle.borderTopLeftRadius,
+    });
+    if (borderTopLeftRadius && borderTopLeftRadius.value) {
+      rectNode.cornerRadius = 'figma.mixed';
+      rectNode.topLeftRadius = borderTopLeftRadius.value;
+    }
+    const borderTopRightRadius = getCornerRadius({
+      radius: computedStyle.borderTopRightRadius,
+    });
+    if (borderTopRightRadius && borderTopRightRadius.value) {
+      rectNode.cornerRadius = 'figma.mixed';
+      rectNode.topRightRadius = borderTopRightRadius.value;
+    }
+    const borderBottomRightRadius = getCornerRadius({
+      radius: computedStyle.borderBottomRightRadius,
+    });
+    if (borderBottomRightRadius && borderBottomRightRadius.value) {
+      rectNode.cornerRadius = 'figma.mixed';
+      rectNode.bottomRightRadius = borderBottomRightRadius.value;
+    }
+    const borderBottomLeftRadius = getCornerRadius({
+      radius: computedStyle.borderBottomLeftRadius,
+    });
+    if (borderBottomLeftRadius && borderBottomLeftRadius.value) {
+      rectNode.cornerRadius = 'figma.mixed';
+      rectNode.bottomLeftRadius = borderBottomLeftRadius.value;
+    }
+  };
+
+  // 像素位置转换
+  function parseUnits(str) {
+    if (!str) {
+      return null;
+    }
+    const match = str.match(/([\d\.]+)px/);
+    const val = match && match[1];
+    if (val) {
+      return {
+        unit: 'PIXELS',
+        value: parseFloat(val),
+      };
+    }
+    return null;
+  }
+  // 获取边框圆角
+  function getCornerRadius({ radius }) {
+    let v = parseUnits(radius);
+    if (!v) {
+      const match = radius.match(/([\d\.]+)%/);
+      if (match) {
+        v = {
+          unit: 'PERCENT',
+          value: radius,
+        };
+      }
+    }
+    return v;
+  }
+
+  // 从当前元素开始，递归地寻找所有 Shadow DOM 内的元素
+  function getShadowEls(el) {
+    var _a;
+    return Array.from(
+      ((_a = el.shadowRoot) === null || _a === void 0
+        ? void 0
+        : _a.querySelectorAll('*')) || []
+    ).reduce((memo, el) => {
+      memo.push(el);
+      memo.push(...getShadowEls(el));
+      return memo;
+    }, []);
+  }
 
   return htmlToFigma(paramArg || document.body);
 }

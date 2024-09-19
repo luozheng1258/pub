@@ -2,10 +2,10 @@ function isEmptyContainer({ node, target, parent }) {
   const { children, _extraStyle } = node || {};
   const { children: parentChildren } = parent || {};
   const { styleList } = target || {};
-  const { borderWidth, bgColor, width, height } = target?.props || {};
+  const { borderWidth, bgColor, width, height, bgImage } = target?.props || {};
   // 排除自定义样式中存在背景图片的情况
   let existBgImg = styleList?.find((item) => item.name === 'backgroundImage');
-  if (existBgImg) {
+  if (existBgImg || bgImage) {
     return false;
   }
 
@@ -35,4 +35,46 @@ function isEmptyContainer({ node, target, parent }) {
   }
 }
 
-export { isEmptyContainer };
+// fontWeight
+function getIvxFontWeight({ textNode }) {
+  let fontWeight = textNode.hasOwnProperty('fontWeight')
+    ? textNode.fontWeight
+    : textNode.style?.fontWeight;
+  if (['bold', '700'].includes(fontWeight)) {
+    return 'bold';
+  } else if (['normal', '400'].includes(fontWeight)) {
+    return;
+  } else if (fontWeight) {
+    return fontWeight;
+  }
+}
+
+// checkIsImage
+function isImageNode({ node }) {
+  const { fills, backgroundStyles } = node;
+  if (
+    Array.isArray(fills) &&
+    fills.length > 0 &&
+    !isImageNode.hasBackgroundPosition({ backgroundStyles })
+  ) {
+    for (const paint of fills) {
+      if (
+        paint.type === 'IMAGE' &&
+        (paint.visible || !paint.hasOwnProperty('visible')) &&
+        paint.opacity !== 0
+      ) {
+        return true;
+      }
+    }
+  }
+}
+isImageNode.hasBackgroundPosition = ({ backgroundStyles }) => {
+  if (Array.isArray(backgroundStyles) && backgroundStyles.length > 0) {
+    return backgroundStyles.find(
+      (style) => style.name === 'backgroundPosition'
+    );
+  }
+  return false;
+};
+
+export { isEmptyContainer, getIvxFontWeight, isImageNode };
