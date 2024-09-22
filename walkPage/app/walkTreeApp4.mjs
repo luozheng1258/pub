@@ -1,4 +1,5 @@
-import puppeteer from 'puppeteer';
+import puppeteer from 'puppeteer-core';
+import chromium from '@sparticuz/chromium';
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
@@ -51,33 +52,38 @@ function isRunningInAwsLambda() {
   let chromeArgs = getChromeArgsFromProcessArg({ processArg: process.argv[3] });
   console.log('chromeArgs:', chromeArgs);
   let opts = {
-    headless: 'new', // 无头模式
+    headless: true, // 无头模式
     ignoreHTTPSErrors: true,
     defaultViewport: null,
-    args: [
-      '--no-sandbox', // Lambda 的环境中已经有严格的安全性约束，禁用沙箱可以减少错误
-      '--disable-dev-shm-usage', // 禁用浏览器使用共享内存 (/dev/shm) 来提高性能，使用 /tmp 目录代替 /dev/shm，避免共享内存不足出现崩溃或性能问题
-      `--window-size=${defaultWindowBoundW},1080`, // 设置窗口大小
+    args: chromium.args,
+    // args: [
+    //   '--no-sandbox', // Lambda 的环境中已经有严格的安全性约束，禁用沙箱可以减少错误
+    //   '--disable-dev-shm-usage', // 禁用浏览器使用共享内存 (/dev/shm) 来提高性能，使用 /tmp 目录代替 /dev/shm，避免共享内存不足出现崩溃或性能问题
+    //   `--window-size=${defaultWindowBoundW},1080`, // 设置窗口大小
 
-      // '--single-process', // 单进程运行,适用于资源受限的环境（如 AWS Lambda），防止启动多个子进程来减小系统负担
-      // '--use-gl=swiftshader', // 使用软件渲染器，避免使用硬件加速，适用于资源受限的环境。注意：使用软件渲染器会导致 Puppeteer 的Navigating frame was detached报错问题
-      // '--no-zygote', // 禁用zygote进程，避免创建不必要的子进程，简化进程模型，适合资源有限的环境
-      // '--in-process-gpu', // 将 GPU 进程与浏览器进程合并,减少进程开销
+    //   // '--single-process', // 单进程运行,适用于资源受限的环境（如 AWS Lambda），防止启动多个子进程来减小系统负担
+    //   // '--use-gl=swiftshader', // 使用软件渲染器，避免使用硬件加速，适用于资源受限的环境。注意：使用软件渲染器会导致 Puppeteer 的Navigating frame was detached报错问题
+    //   // '--no-zygote', // 禁用zygote进程，避免创建不必要的子进程，简化进程模型，适合资源有限的环境
+    //   // '--in-process-gpu', // 将 GPU 进程与浏览器进程合并,减少进程开销
 
-      // '--disable-gpu', // 禁用 GPU 硬件加速，避免因为 GPU 不支持而导致的错误: 注意: 禁用 GPU 硬件加速会导致 puppeteer 的Navigating frame was detached报错问题
-      // '--no-pings', // 禁用网络连接的 ping 操作，避免不必要的网络请求
-      // '--no-default-browser-check', // 禁用默认浏览器检查，避免弹出提示框
-      // '--mute-audio', // 静音音频，避免播放声音
-      // '--ignore-gpu-blocklist', // 忽略 GPU 阻止列表，避免因为 GPU 不支持而导致的错误
-      // '--disable-setuid-sandbox', // 禁用setuid沙箱，避免在沙箱环境中运行 Chrome 时出现错误
-      ...chromeArgs,
-    ],
+    //   // '--disable-gpu', // 禁用 GPU 硬件加速，避免因为 GPU 不支持而导致的错误: 注意: 禁用 GPU 硬件加速会导致 puppeteer 的Navigating frame was detached报错问题
+    //   // '--no-pings', // 禁用网络连接的 ping 操作，避免不必要的网络请求
+    //   // '--no-default-browser-check', // 禁用默认浏览器检查，避免弹出提示框
+    //   // '--mute-audio', // 静音音频，避免播放声音
+    //   // '--ignore-gpu-blocklist', // 忽略 GPU 阻止列表，避免因为 GPU 不支持而导致的错误
+    //   // '--disable-setuid-sandbox', // 禁用setuid沙箱，避免在沙箱环境中运行 Chrome 时出现错误
+    //   ...chromeArgs,
+    // ],
   };
   if (os.type() !== 'Windows_NT') {
     // 非windows系统,使用chrome的执行路径
-    // opts.executablePath = '/usr/bin/google-chrome';
+    opts.executablePath = await chromium.executablePath();
+  } else {
+    opts.executablePath = path.resolve(
+      __dirname,
+      '../chrome/win64-127.0.6533.119/chrome-win64/chrome.exe'
+    );
   }
-  console.log('Chrome executable path:', puppeteer.executablePath());
   const browser = await puppeteer.launch(opts);
   console.log('browser launched');
   const page = await browser.newPage();

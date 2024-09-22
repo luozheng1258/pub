@@ -27,3 +27,5 @@ sudo dnf install \
   alsa-lib \
   atk
 
+# zip 部署到lambda
+zip -r walkPage_test.zip .
