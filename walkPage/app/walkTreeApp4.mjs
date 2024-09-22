@@ -18,6 +18,28 @@ const windowBoundH2 = 900;
 async function writeJSON({ jsonStr, url }) {
   fs.writeFileSync(url, jsonStr, 'utf-8');
 }
+
+function getChromeArgsFromProcessArg({ processArg }) {
+  if (!(processArg && processArg.startsWith('--chrome-args='))) return [];
+  let args = processArg.slice('--chrome-args='.length);
+  return args.split(',');
+}
+// 判断是否是在AWS Lambda环境中运行
+function isRunningInAwsLambda() {
+  if (
+    process.env['AWS_EXECUTION_ENV'] &&
+    process.env['AWS_EXECUTION_ENV'].includes('AWS_Lambda_nodejs')
+  ) {
+    return true;
+  } else if (
+    process.env['AWS_LAMBDA_JS_RUNTIME'] &&
+    process.env['AWS_LAMBDA_JS_RUNTIME'].includes('nodejs')
+  ) {
+    return true;
+  }
+  return false;
+}
+
 (async () => {
   let recvUrl = '';
   recvUrl = process.argv[2];
@@ -26,15 +48,29 @@ async function writeJSON({ jsonStr, url }) {
     console.log('err no url');
     return;
   }
-
+  let chromeArgs = getChromeArgsFromProcessArg({ processArg: process.argv[3] });
+  console.log('chromeArgs:', chromeArgs);
   let opts = {
     headless: 'new', // 无头模式
     ignoreHTTPSErrors: true,
     defaultViewport: null,
     args: [
-      '--no-sandbox',
-      '--disable-dev-shm-usage',
-      `--window-size=${defaultWindowBoundW},1080`,
+      '--no-sandbox', // Lambda 的环境中已经有严格的安全性约束，禁用沙箱可以减少错误
+      '--disable-dev-shm-usage', // 禁用浏览器使用共享内存 (/dev/shm) 来提高性能，使用 /tmp 目录代替 /dev/shm，避免共享内存不足出现崩溃或性能问题
+      `--window-size=${defaultWindowBoundW},1080`, // 设置窗口大小
+
+      // '--single-process', // 单进程运行,适用于资源受限的环境（如 AWS Lambda），防止启动多个子进程来减小系统负担
+      // '--use-gl=swiftshader', // 使用软件渲染器，避免使用硬件加速，适用于资源受限的环境。注意：使用软件渲染器会导致 Puppeteer 的Navigating frame was detached报错问题
+      // '--no-zygote', // 禁用zygote进程，避免创建不必要的子进程，简化进程模型，适合资源有限的环境
+      // '--in-process-gpu', // 将 GPU 进程与浏览器进程合并,减少进程开销
+
+      // '--disable-gpu', // 禁用 GPU 硬件加速，避免因为 GPU 不支持而导致的错误: 注意: 禁用 GPU 硬件加速会导致 puppeteer 的Navigating frame was detached报错问题
+      // '--no-pings', // 禁用网络连接的 ping 操作，避免不必要的网络请求
+      // '--no-default-browser-check', // 禁用默认浏览器检查，避免弹出提示框
+      // '--mute-audio', // 静音音频，避免播放声音
+      // '--ignore-gpu-blocklist', // 忽略 GPU 阻止列表，避免因为 GPU 不支持而导致的错误
+      // '--disable-setuid-sandbox', // 禁用setuid沙箱，避免在沙箱环境中运行 Chrome 时出现错误
+      ...chromeArgs,
     ],
   };
   if (os.type() !== 'Windows_NT') {
@@ -71,9 +107,16 @@ async function writeJSON({ jsonStr, url }) {
     // console.log('networkidle2');
   } catch (e) {
     console.log(`${recvUrl} navigation err:`, e);
+    switch (e.message) {
+      case 'Navigating frame was detached': // frame被移除或重新加载
+        //
+        break;
+    }
   }
 
-  let processLoaded = async () => {
+  processLoaded();
+
+  async function processLoaded() {
     loadCnt++;
     if (loadCnt > 1) {
       return;
@@ -200,8 +243,7 @@ async function writeJSON({ jsonStr, url }) {
     setTimeout(async () => {
       await browser.close(); // 关闭浏览器
     }, 1000);
-  };
-  processLoaded();
+  }
 })();
 
 function recordNodeW({ source, target, windowBoundW }) {

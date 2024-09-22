@@ -8,7 +8,7 @@ const __filename = url.fileURLToPath(import.meta.url);
 // 从模块 URL 中提取目录路径
 const __dirname = path.dirname(__filename);
 var data = JSON.parse(
-  fs.readFileSync(path.join(__dirname, '../layerTreeOrigin/tree_1920.json'), {
+  fs.readFileSync(path.join(__dirname, '../layerTreeOrigin/tree_1890.json'), {
     encoding: 'utf8',
   })
 );

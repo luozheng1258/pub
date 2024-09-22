@@ -26,6 +26,7 @@ app.post('/api/walkPage', (req, res) => {
       var result = child_process.spawn('node', [
         path.resolve(__dirname, 'app/walkTreeApp4.mjs'),
         walkTarget,
+        getChromeArgs({ args: process.argv.slice(2) }),
       ]);
       let filePath = '';
       let debugDetails = [];
@@ -84,3 +85,9 @@ app.post('/', (req, res) => {
 app.listen(port, () => {
   console.log('http://localhost:' + port + '/walkpage');
 });
+
+function getChromeArgs({ args }) {
+  if (!Array.isArray(args)) return;
+  let chromeArgsStr = args.find((arg) => arg.startsWith('--chrome-args='));
+  return chromeArgsStr;
+}
