@@ -2,7 +2,7 @@
   "dependencies": {
     "express": "^4.18.2",
     "multiparty": "^4.2.3",
-    "puppeteer": "~23.1.0",
+    "puppeteer-core": "~23.1.0",
     "@sparticuz/chromium": "~127.0.0",
     "xid-js": "^1.0.1"
   }
